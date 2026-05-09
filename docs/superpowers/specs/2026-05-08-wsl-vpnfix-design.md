@@ -274,6 +274,21 @@ gvisor_tap_vsock:
 
 The build verifies upstream's `sha256sums` against these values before any unpack. Any drift fails the build loudly.
 
+**Pinning policy — what we explicitly version-control vs. what falls out of the base:**
+
+We pin exactly four things. Everything else in the build environment is downstream of those pins and bumps in lockstep when we bump them:
+
+| Pinned thing | Where the pin lives | What it locks |
+|---|---|---|
+| Alpine base image | `FROM alpine@sha256:<digest>` in Containerfile / Dockerfile.rootfs | Every apk package in the resulting image (nftables, iproute2, ca-certificates, busybox, libc, etc.) — they are whatever ships in that Alpine snapshot. |
+| Go toolchain | `go=<version>-r<rev>` in `apk add` of the builder image, plus `go <version>` directive in `go.mod` | The compiler / stdlib that produces the binary. Builder pin must match `go.mod` directive so a base bump cannot silently change the language version. |
+| Go module dependencies | `go.sum` (verified at build time via `go mod verify` against `sum.golang.org`) | Every Go library compiled into the binary, including transitive deps. |
+| gvisor-tap-vsock release | `build/upstream-pins.yaml` (tag + sha256 of each artifact) | The `gvforwarder` Linux binary and `gvproxy-windowsgui.exe` shipped in the rootfs. |
+
+We **do not** pin individual apk packages by version (no `nftables=1.1.5-r2`, no `iproute2=6.17.0-r0`). The Alpine base digest already locks them; per-package pins would be redundant noise that drifts out of sync with reality every time the base bumps. An apk pin is justified only when version really matters independent of the base — Go is the one such case (toolchain == build product).
+
+We also do not vendor Go modules. `go.sum` + `sum.golang.org` (Go's transparency log) + `go mod verify` (run in CI) + `govulncheck` give the same supply-chain guarantees as a committed `vendor/` directory without the ~10 MB repo bloat or the update friction (every dep bump = `go mod vendor` re-run + manual diff review). Vendor was the standard pre-Go-modules; the modern toolchain made it redundant for projects that build from a Go-team-operated proxy + checksum DB.
+
 ### 4.2 Build steps
 
 1. **Compile our Go binary** in a Go builder image (Alpine-based, pinned by digest):
@@ -345,10 +360,12 @@ Workflows:
 
 ```
 .github/workflows/
-├── ci.yml                 # PR: lint + test + build verify
+├── ci.yml                 # PR: gofmt, go vet, go mod verify, govulncheck, unit + integration tests, build verify
 ├── release.yml            # tag-triggered: reproducible build, sign, SBOM, upload
 └── reproducibility.yml    # tag + nightly: rebuild + diff
 ```
+
+`go mod verify` runs before any compilation and aborts the job if any cached module's content doesn't match the hash in `go.sum`. `govulncheck ./...` runs against the resolved module graph and fails the job on any known CVE in a dep we actually call. Together these substitute for vendoring (see 4.1 pinning policy).
 
 ### 4.6 Release artifacts
 
