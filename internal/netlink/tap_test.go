@@ -67,3 +67,32 @@ func TestTap_Idempotent(t *testing.T) {
 	err := CreateTap(name, otherMac)
 	assert.Error(t, err, "create with different MAC must fail")
 }
+
+func TestRoute_AddDefaultViaTap(t *testing.T) {
+	skipIfNotRoot(t)
+
+	const (
+		name = "wsltest1"
+		mac  = "5a:94:ef:e4:0c:fe"
+		ip   = "192.168.127.2"
+		gw   = "192.168.127.1"
+	)
+	defer func() { _ = DeleteTap(name) }()
+
+	require.NoError(t, CreateTap(name, mac))
+	require.NoError(t, AddAddr(name, ip, 24))
+	require.NoError(t, SetUp(name))
+	require.NoError(t, AddDefaultRoute(name, gw))
+
+	routes, err := vnl.RouteList(nil, vnl.FAMILY_V4)
+	require.NoError(t, err)
+
+	found := false
+	for _, r := range routes {
+		if isDefaultDst(r.Dst) && r.Gw != nil && r.Gw.String() == gw {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "default route via %s not found", gw)
+}
