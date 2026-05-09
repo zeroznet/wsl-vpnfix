@@ -1,0 +1,15 @@
+# Binaries
+/bin/
+/out/
+wsl-vpnfix
+*.exe
+
+# Test artifacts
+/coverage.out
+/coverage.html
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
