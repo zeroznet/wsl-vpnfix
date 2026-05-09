@@ -259,7 +259,12 @@ func spawnGvforwarder(ctx context.Context, cfg config.Config) (*process.Handle, 
 		cfg.GvproxyPath = stagedExe
 	}
 	debugFlag := boolStr(cfg.Debug)
-	stdioURL := fmt.Sprintf("stdio:%s?listen-stdio=accept&debug=%s", cfg.GvproxyPath, debugFlag)
+	// ssh-port=-1 disables gvproxy's SSH forward listener. Default is 2222
+	// (cmd/gvproxy/config.go:121 in v0.8.8); -1 is the explicit disable
+	// sentinel (config.go:335). Without this the listener fights for 127.0.0.1:2222
+	// against any pre-existing process and gvproxy exits with
+	// "cannot add network services". We do not use SSH forwarding.
+	stdioURL := fmt.Sprintf("stdio:%s?listen-stdio=accept&debug=%s&ssh-port=-1", cfg.GvproxyPath, debugFlag)
 	spec := process.Spec{
 		Path: cfg.GvforwarderPath,
 		Args: []string{
