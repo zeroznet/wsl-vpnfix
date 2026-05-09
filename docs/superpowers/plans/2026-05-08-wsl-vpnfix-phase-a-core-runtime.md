@@ -2852,66 +2852,15 @@ git commit -m "main: full orchestrator — single child (gvforwarder), teardown 
 
 ---
 
-## Task 14: End-to-end smoke test on a WSL host
+## Task 14: End-to-end smoke test on a WSL host — **deferred to Phase B**
 
-**Files:** `dev/smoke/{prepare,run,verify}.sh` (already in repo); `docs/PHASE-A-SMOKE-TEST.md` (created by the operator)
+**Status:** out of scope for Phase A.
 
-Phase A is "done" only when the binary actually shovels packets on a real WSL 2 setup with the operator's corporate VPN connected. This step is operator-driven and lives outside the implementer flow — automation only goes as far as the bash scripts in `dev/smoke/`.
+A binary-only smoke test that requires the operator to manually `apt install golang-go`, clone the repo, compile, and stage upstream binaries inside an arbitrary WSL distro — testing a flow no real user will ever follow — was rejected during pre-Phase-B review (2026-05-09). It would have validated a synthetic environment that diverges from production in exactly the surfaces (rootfs assembly, auto-start mechanism, `wsl.conf`, init wrapper) where bugs are most likely to land unnoticed.
 
-**Preconditions:** Windows 10/11 with WSL 2 (`wsl --version` shows version 2.x), at least one Linux distro installed in WSL, the corporate VPN connected on the Windows side, Go installed in the WSL distro (`apt install golang-go` / `apk add go`).
+The legitimate end-to-end gate is the **production tarball gate**, which lives in Phase B Task 1: build the importable `wsl-vpnfix-X.Y.tar.gz` rootfs from `build/Dockerfile.rootfs`, `wsl --import` it on a real WSL 2 machine with the operator's corporate VPN connected, and verify connectivity + clean teardown. Same outcome the synthetic smoke would have validated, against the artifact users actually receive.
 
-- [ ] **Step 1: Stage everything on the WSL host**
-
-```sh
-# clone repo into the WSL distro (or scp it from your dev box)
-cd <repo>
-sudo dev/smoke/prepare.sh
-```
-
-Idempotent. Builds `/sbin/wsl-vpnfix` from this repo, downloads `gvisor-tap-vsock v0.8.8` release artifacts, verifies upstream sha256sums, installs `/sbin/wsl-gvforwarder` and `/etc/wsl-vpnfix/wsl-gvproxy.exe`.
-
-- [ ] **Step 2: Run wsl-vpnfix in the foreground**
-
-```sh
-sudo dev/smoke/run.sh
-```
-
-Foreground orchestrator with `DEBUG=1`. Leave running until step 5.
-
-- [ ] **Step 3: Verify routing in a second shell (live mode)**
-
-In a separate shell on the same WSL distro, while the run shell is still active:
-
-```sh
-dev/smoke/verify.sh
-```
-
-Auto-detects "live" mode from the presence of the `wsltap` interface. Checks: tap UP, nft table installed, default route via `wsltap`, DNS resolution, HTTPS to `example.com`. Prints PASS / FAIL per check and a summary; exits non-zero on any FAIL.
-
-- [ ] **Step 4: Sibling-distro check (optional)**
-
-WSL 2 in default networking mode gives every distro its own net namespace, so the rules and tap installed in the appliance distro **do not** automatically apply in a sibling distro on the same Windows host. Cross-distro routing is a Phase B concern (mirrored networking mode + appliance-distro deploy). For Phase A, `verify.sh` from inside the same distro that runs `wsl-vpnfix` is the contract.
-
-- [ ] **Step 5: Tear down via SIGINT**
-
-Back in the run shell, Ctrl-C. Expect the teardown log lines (`teardown nftables-remove`, `teardown delete-tap-default-route`, `teardown delete-tap`, `teardown restore-original-default-routes`).
-
-- [ ] **Step 6: Verify clean teardown**
-
-```sh
-dev/smoke/verify.sh
-```
-
-Now auto-detects "teardown" mode (no `wsltap`). Checks: tap removed, nft table removed, default route restored, no `wsl-vpnfix` / `wsl-gvforwarder` processes alive.
-
-- [ ] **Step 7: Document the result**
-
-Create `docs/PHASE-A-SMOKE-TEST.md` with one paragraph: WSL version (`wsl --version`), Windows build, distro version, VPN client name + version, `gvisor-tap-vsock` release tag (`v0.8.8`), what passed, what failed if anything.
-
-```bash
-git add docs/PHASE-A-SMOKE-TEST.md
-git commit -m "docs: phase A smoke-test results"
-```
+Phase A's acceptance gate ends at Task 13: unit + integration tests green inside the dev container, race detector clean, reproducible build bit-for-bit identical. Those are the implementer-flow checkpoints. Production-shape smoke is Phase B's job.
 
 ---
 
@@ -2969,7 +2918,7 @@ Three further failures surfaced during actual implementation against the dev-con
 
 ## After this plan
 
-Phase A finishes when Task 14's smoke test passes against a real corporate-VPN WSL setup and the result is committed. Then:
+Phase A finishes at Task 13: unit + integration tests green inside the dev container, race detector clean, reproducible build bit-for-bit identical. The end-to-end gate (production tarball + `wsl --import` + connectivity verify on a real corporate-VPN WSL host) lives in Phase B Task 1 and is what actually closes the loop on Phase A's runtime.
 
 - **Phase B plan** — rootfs assembly (Alpine pinned by digest, Dockerfile.builder, Dockerfile.rootfs, `build/upstream-pins.yaml`, `pack.sh`), reproducible build, GitHub Actions (`ci.yml`, `release.yml`, `reproducibility.yml`), cosign signing, syft SBOM, `wsl-vpnfix.service` with hardening directives.
 - **Phase C plan** — README, LICENSE, `install-wslvpnfix.ps1`, `docs/SECURITY-AUDIT.md` with the initial audit pass, `docs/THREAT-MODEL.md` frozen from the spec, finding fixes round, tag `v1.0.0`.
