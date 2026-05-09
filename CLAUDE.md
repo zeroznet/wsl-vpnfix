@@ -89,8 +89,39 @@ When the rebuild touches an external SDK or HTTP API, the workspace's `nanoconte
 
 ## Status
 
-Repo has a design spec (`docs/superpowers/specs/2026-05-08-wsl-vpnfix-design.md`) and a Phase A implementation plan (`docs/superpowers/plans/2026-05-08-wsl-vpnfix-phase-a-core-runtime.md`). No code yet.
+**Phase A complete** as of 2026-05-09. Go orchestrator implemented per `docs/superpowers/plans/2026-05-08-wsl-vpnfix-phase-a-core-runtime.md`. All unit + integration tests green inside the dev container, race detector clean, `CGO_ENABLED=0` static binary builds bit-for-bit reproducibly. Open work and milestone gating live in `TODO.md`.
 
-Phase A delivers the Go orchestrator, manually testable end-to-end on a developer's WSL 2 machine. Phase B delivers the rootfs assembly and reproducible build pipeline. Phase C delivers README, LICENSE, the PowerShell installer, and the initial security audit pass.
+**Phase B not started.** Rootfs assembly + reproducible build pipeline. Phase B Task 1 = production tarball + end-to-end smoke gate (closes Phase A's deferred manual smoke step in one move). Plan does not exist yet — write at `docs/superpowers/plans/<YYYY-MM-DD>-wsl-vpnfix-phase-b-rootfs-and-release.md` after a brainstorming pass against the spec section 4.
 
-This file gets a real **Repo layout** table and a **Common commands** table once code exists. Until then, do not invent either.
+**Phase C not started.** README, LICENSE, `install-wslvpnfix.ps1`, `docs/SECURITY-AUDIT.md`, `docs/THREAT-MODEL.md`, `v1.0.0` tag.
+
+## Repo layout
+
+```
+wsl-vpnfix/
+├── CLAUDE.md                                       ← this file
+├── TODO.md                                         ← open work tracker (read this before starting any session)
+├── go.mod, go.sum                                  ← module github.com/zeroznet/wsl-vpnfix, go 1.25.0
+├── cmd/wsl-vpnfix/                                 ← orchestrator main + buildEnv test
+├── internal/
+│   ├── config/                                     ← Config struct, validators, env loader
+│   ├── healthcheck/                                ← HTTP(S) GET + DNS resolve probes
+│   ├── netfilter/                                  ← nftables rule construction + install/remove via google/nftables
+│   ├── netlink/                                    ← tap, addr, route via vishvananda/netlink
+│   ├── process/                                    ← child-process manager (Setpgid, kill -pgid, WaitDelay 5s)
+│   └── wsl/                                        ← WSL2 NAT gateway IP autodetect from resolv.conf
+├── dev/
+│   ├── Containerfile                               ← Alpine 3.23.4 (digest-pinned) + Go 1.25.9 dev image
+│   └── run.sh                                      ← podman wrapper with persistent caches; --integration adds NET_ADMIN+NET_RAW+/dev/net/tun
+└── docs/superpowers/{specs,plans}/...              ← design + phase plans (frozen-when-dated)
+```
+
+## Common commands
+
+```sh
+./dev/run.sh 'go test ./...'                                                                 # unit tests
+./dev/run.sh --integration 'go test -tags=integration ./...'                                  # integration (root + caps)
+./dev/run.sh 'CGO_ENABLED=1 go test -race -count=1 ./...'                                     # race detector (CGO required for -race)
+./dev/run.sh 'gofmt -l . && go vet ./... && go vet -tags=integration ./...'                   # lint pass
+./dev/run.sh 'CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -buildid=" -o /tmp/wsl-vpnfix ./cmd/wsl-vpnfix'   # production build (reproducible)
+```
