@@ -2854,76 +2854,59 @@ git commit -m "main: full orchestrator — single child (gvforwarder), teardown 
 
 ## Task 14: End-to-end smoke test on a WSL host
 
-**Files:** none (manual procedure)
+**Files:** `dev/smoke/{prepare,run,verify}.sh` (already in repo); `docs/PHASE-A-SMOKE-TEST.md` (created by the operator)
 
-This is a pure manual verification step. Phase A is "done" only when the binary actually shovels packets on a real WSL 2 setup.
+Phase A is "done" only when the binary actually shovels packets on a real WSL 2 setup with the operator's corporate VPN connected. This step is operator-driven and lives outside the implementer flow — automation only goes as far as the bash scripts in `dev/smoke/`.
 
-- [ ] **Step 1: Stage required binaries on a WSL host**
+**Preconditions:** Windows 10/11 with WSL 2 (`wsl --version` shows version 2.x), at least one Linux distro installed in WSL, the corporate VPN connected on the Windows side, Go installed in the WSL distro (`apt install golang-go` / `apk add go`).
 
-On a Windows machine with WSL 2 + a primary distro. Pinned to gvisor-tap-vsock `v0.8.8` (Feb 2026 release):
-
-```sh
-# inside the primary distro
-wget https://github.com/containers/gvisor-tap-vsock/releases/download/v0.8.8/gvforwarder
-wget https://github.com/containers/gvisor-tap-vsock/releases/download/v0.8.8/gvproxy-windowsgui.exe
-wget https://github.com/containers/gvisor-tap-vsock/releases/download/v0.8.8/sha256sums
-
-# verify
-sha256sum -c <(grep -E '(gvforwarder|gvproxy-windowsgui.exe)$' sha256sums)
-
-sudo install -m 0755 gvforwarder /sbin/wsl-gvforwarder
-sudo install -m 0755 -D gvproxy-windowsgui.exe /etc/wsl-vpnfix/wsl-gvproxy.exe
-```
-
-Expected: both `sha256sum -c` lines say `OK`.
-
-- [ ] **Step 2: Build and copy wsl-vpnfix**
-
-From the project working directory:
-
-```bash
-CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -buildid=" \
-  -o /tmp/wsl-vpnfix ./cmd/wsl-vpnfix
-scp /tmp/wsl-vpnfix wsl-host:/tmp/wsl-vpnfix
-# inside the WSL distro:
-sudo install -m 0755 /tmp/wsl-vpnfix /sbin/wsl-vpnfix
-```
-
-- [ ] **Step 3: Run with debug**
-
-In the WSL distro, with the corporate VPN connected on Windows side:
+- [ ] **Step 1: Stage everything on the WSL host**
 
 ```sh
-sudo -E DEBUG=1 /sbin/wsl-vpnfix
+# clone repo into the WSL distro (or scp it from your dev box)
+cd <repo>
+sudo dev/smoke/prepare.sh
 ```
 
-(`sudo -E` preserves `WSL_INTEROP` and friends through the sudo barrier; the systemd unit shipped in Phase B will set them via `Environment=` and won't need `-E`.)
+Idempotent. Builds `/sbin/wsl-vpnfix` from this repo, downloads `gvisor-tap-vsock v0.8.8` release artifacts, verifies upstream sha256sums, installs `/sbin/wsl-gvforwarder` and `/etc/wsl-vpnfix/wsl-gvproxy.exe`.
 
-Expected: log lines for tap up, nft install, gvforwarder spawn, eventually a healthcheck line. Process keeps running.
-
-- [ ] **Step 4: Verify routing in a second shell**
-
-In a different WSL 2 distro on the same machine:
+- [ ] **Step 2: Run wsl-vpnfix in the foreground**
 
 ```sh
-ip route get 1.1.1.1
-curl -I https://example.com
-nslookup example.com
+sudo dev/smoke/run.sh
 ```
 
-Expected: route goes via `wsltap`; HTTPS works through the VPN; DNS resolves.
+Foreground orchestrator with `DEBUG=1`. Leave running until step 5.
 
-If this fails: confirm that `nft list ruleset` (run as root from the appliance distro) shows our `wsl-vpnfix` table with prerouting/output/postrouting chains, and that `ip link show wsltap` shows the tap is up.
+- [ ] **Step 3: Verify routing in a second shell (live mode)**
+
+In a separate shell on the same WSL distro, while the run shell is still active:
+
+```sh
+dev/smoke/verify.sh
+```
+
+Auto-detects "live" mode from the presence of the `wsltap` interface. Checks: tap UP, nft table installed, default route via `wsltap`, DNS resolution, HTTPS to `example.com`. Prints PASS / FAIL per check and a summary; exits non-zero on any FAIL.
+
+- [ ] **Step 4: Sibling-distro check (optional)**
+
+WSL 2 in default networking mode gives every distro its own net namespace, so the rules and tap installed in the appliance distro **do not** automatically apply in a sibling distro on the same Windows host. Cross-distro routing is a Phase B concern (mirrored networking mode + appliance-distro deploy). For Phase A, `verify.sh` from inside the same distro that runs `wsl-vpnfix` is the contract.
 
 - [ ] **Step 5: Tear down via SIGINT**
 
-In the first shell, Ctrl-C the orchestrator.
+Back in the run shell, Ctrl-C. Expect the teardown log lines (`teardown nftables-remove`, `teardown delete-tap-default-route`, `teardown delete-tap`, `teardown restore-original-default-routes`).
 
-Expected: log lines for teardown (`teardown nftables-remove`, `teardown delete-tap-default-route`, `teardown delete-tap`, `teardown restore-wsl2-default-route`); after exit, `sudo nft list ruleset` shows no `wsl-vpnfix` table; `ip link show wsltap` returns `Device "wsltap" does not exist.`; default route is restored.
+- [ ] **Step 6: Verify clean teardown**
 
-- [ ] **Step 6: Document the smoke-test result**
+```sh
+dev/smoke/verify.sh
+```
 
-Create `docs/PHASE-A-SMOKE-TEST.md` with one paragraph: WSL version, Windows version, primary distro, VPN client, gvisor-tap-vsock release tag, what worked, what didn't.
+Now auto-detects "teardown" mode (no `wsltap`). Checks: tap removed, nft table removed, default route restored, no `wsl-vpnfix` / `wsl-gvforwarder` processes alive.
+
+- [ ] **Step 7: Document the result**
+
+Create `docs/PHASE-A-SMOKE-TEST.md` with one paragraph: WSL version (`wsl --version`), Windows build, distro version, VPN client name + version, `gvisor-tap-vsock` release tag (`v0.8.8`), what passed, what failed if anything.
 
 ```bash
 git add docs/PHASE-A-SMOKE-TEST.md
