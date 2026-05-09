@@ -43,6 +43,8 @@ var (
 )
 
 func main() {
+	initIfPID1()
+
 	printConfig := flag.Bool("print-config", false, "print resolved config as JSON and exit")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
@@ -160,7 +162,7 @@ func run(cfg config.Config) error {
 
 func installSignalHandler(cancel context.CancelFunc) {
 	sigs := make(chan os.Signal, 2)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	go func() {
 		s := <-sigs
 		logf("signal %s, tearing down", s)
