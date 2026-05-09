@@ -68,7 +68,15 @@ func TestBuildRuleSet_DNSRedirectsToVpnkitGateway(t *testing.T) {
 	assert.True(t, gotDNS, "expected DNS DNAT rules in ruleset")
 }
 
-func TestBuildRuleSet_MasqueradeScopedToTapAndSourceCIDR(t *testing.T) {
+func TestBuildRuleSet_MasqueradeScopedToTap(t *testing.T) {
+	// Smoke: masquerade is scoped to oifname=wsltap with NO source CIDR.
+	// Sibling distros in the shared WSL2 netns have eth0 IPs outside
+	// 192.168.127.0/24; without unconditional masquerade on the tap,
+	// gvproxy sees their original source IP and cannot reply (its
+	// user-mode stack only routes 192.168.127.0/24). Verified on
+	// Win 11 25H2 + Ubuntu sibling 2026-05-10. Reverses the earlier
+	// F-007-driven saddr scope which hypothesized "origin masking" but
+	// in practice broke DNS-via-resolv.conf for every sibling distro.
 	rs, err := BuildRuleSet(validParams())
 	require.NoError(t, err)
 
@@ -76,9 +84,9 @@ func TestBuildRuleSet_MasqueradeScopedToTapAndSourceCIDR(t *testing.T) {
 	for _, r := range rs.Rules {
 		if r.Action == "masquerade" {
 			assert.Equal(t, "wsltap", r.OutIface)
-			assert.Equal(t, "192.168.127.0/24", r.MatchSrcCIDR, "masquerade must be scoped to source CIDR (spec F-007)")
+			assert.Empty(t, r.MatchSrcCIDR, "masquerade must NOT be scoped to a source CIDR")
 			gotMasq = true
 		}
 	}
-	assert.True(t, gotMasq, "expected masquerade rule scoped to wsltap + source CIDR")
+	assert.True(t, gotMasq, "expected masquerade rule scoped to wsltap")
 }

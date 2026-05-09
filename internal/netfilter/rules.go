@@ -81,10 +81,15 @@ func BuildRuleSet(p Params) (RuleSet, error) {
 		{DescTag: "dns-tcp-out", Chain: "output", MatchDst: p.WSL2GatewayIP, MatchProto: "tcp", MatchPort: 53, Action: "dnat", DNATTo: p.VpnkitGatewayIP, DNATPort: 53},
 		{DescTag: "host-output", Chain: "output", MatchDst: p.WSL2GatewayIP, Action: "dnat", DNATTo: p.VpnkitHostIP},
 
-		// POSTROUTING: masquerade traffic leaving the tap, scoped to our
-		// vpnkit private network as source. Belt-and-braces with the
-		// oifname match — the saddr scope addresses spec finding F-007.
-		{DescTag: "masquerade", Chain: "postrouting", OutIface: p.TapName, MatchSrcCIDR: p.VpnkitLocalCIDR, Action: "masquerade"},
+		// POSTROUTING: masquerade ALL traffic leaving the tap. Without
+		// this, sibling distros (eth0 IP outside 192.168.127.0/24) send
+		// to gvproxy with their original source IP; gvproxy's user-mode
+		// stack cannot route a reply outside 192.168.127.0/24 and the
+		// query times out. The earlier saddr-scoped variant (per spec
+		// finding F-007's hypothetical "origin masking" concern)
+		// silently broke DNS-via-resolv.conf for every sibling distro.
+		// Verified on Win 11 25H2 + Ubuntu sibling on 2026-05-10.
+		{DescTag: "masquerade", Chain: "postrouting", OutIface: p.TapName, Action: "masquerade"},
 	}
 
 	return RuleSet{Chains: chains, Rules: rules}, nil
