@@ -10,7 +10,6 @@ Open work only, ordered by temporal urgency: **Now** = active sprint or next-act
 
 ## Later
 
-- [ ] **LICENSE file (BSD-2-Clause).** Workspace `CLAUDE.md` "Attribution & License" sets BSD-2-Clause as the default; the file is a 22-line standard form (year + name + boilerplate). Not blocking the Phase B plan, but blocks Phase B implementation because the appliance rootfs ships LICENSE inside.
 - [ ] **Push to GitHub (private first).** No remote configured yet. Required before Phase B's cosign keyless OIDC signing flow works (cosign verifies against the GitHub Actions OIDC identity at `repo:zeroznet/wsl-vpnfix:ref:refs/tags/v…`). Switch from private → public when README + LICENSE land in Phase C.
 - [ ] **Phase B follow-on tasks.** GitHub Actions CI/release/repro workflows, syft SBOM, hardened systemd unit (or PID-1 init wrapper), Renovate config that PRs `build/upstream-pins.yaml` and `go.mod` bumps separately. These are scoped inside the Phase B plan once written; listed here only so they don't slip out of view.
 
