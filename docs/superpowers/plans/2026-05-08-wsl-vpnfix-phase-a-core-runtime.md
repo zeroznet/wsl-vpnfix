@@ -105,7 +105,7 @@ Path: `.gitignore`
 # Binaries
 /bin/
 /out/
-wsl-vpnfix
+/wsl-vpnfix
 *.exe
 
 # Test artifacts
@@ -118,6 +118,8 @@ wsl-vpnfix
 .DS_Store
 *.swp
 ```
+
+`/wsl-vpnfix` is **root-anchored** with the leading slash on purpose. A bare `wsl-vpnfix` would also match the `cmd/wsl-vpnfix/` directory and silently swallow every untracked file inside it (e.g. a `main_test.go` added later). Found the hard way during Phase A.
 
 - [ ] **Step 3: Create empty package directories**
 
@@ -968,7 +970,7 @@ func TestRoute_AddDefaultViaTap(t *testing.T) {
 
 	found := false
 	for _, r := range routes {
-		if r.Dst == nil && r.Gw != nil && r.Gw.String() == gw {
+		if isDefaultDst(r.Dst) && r.Gw != nil && r.Gw.String() == gw {
 			found = true
 			break
 		}
@@ -976,6 +978,8 @@ func TestRoute_AddDefaultViaTap(t *testing.T) {
 	assert.True(t, found, "default route via %s not found", gw)
 }
 ```
+
+`isDefaultDst` (defined in `tap.go`, see step 3) accepts both representations of an IPv4 default. Using a bare `r.Dst == nil` check would miss any kernel that surfaces the route as `Dst=0.0.0.0/0` (which is what the dev-container kernel does today).
 
 - [ ] **Step 2: Run test (expect compile failure)**
 
@@ -1056,6 +1060,22 @@ type RouteSnapshot struct {
 // skip pushing a teardown closure when there is nothing to undo.
 func (s RouteSnapshot) Len() int { return len(s.routes) }
 
+// isDefaultDst reports whether dst represents an IPv4 default route.
+// vnl.RouteList may return either nil OR an explicit *net.IPNet with a
+// /0 mask depending on the kernel version (and the rtnetlink path that
+// produced the entry). Both mean the same thing; treat them the same.
+// A bare `r.Dst == nil` check would silently miss every default route
+// surfaced as 0.0.0.0/0 — exactly the case CaptureAndDelDefaultRoutes
+// must NOT miss, since leaving a stale default in place defeats the
+// whole point of redirecting WSL2 traffic through our tap.
+func isDefaultDst(dst *net.IPNet) bool {
+	if dst == nil {
+		return true
+	}
+	ones, bits := dst.Mask.Size()
+	return ones == 0 && bits == 32
+}
+
 // CaptureAndDelDefaultRoutes lists all IPv4 default routes in the main
 // table, deletes them, and returns an opaque snapshot the caller can
 // hand back to RestoreRoutes on teardown. Used at startup to clear the
@@ -1069,7 +1089,7 @@ func CaptureAndDelDefaultRoutes() (RouteSnapshot, error) {
 	}
 	var captured []vnl.Route
 	for _, r := range routes {
-		if r.Dst != nil {
+		if !isDefaultDst(r.Dst) {
 			continue
 		}
 		c := r // copy by value before storing/deleting
@@ -1688,6 +1708,7 @@ package process
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1798,9 +1819,22 @@ func TestSpawn_TerminatesProcessGroup(t *testing.T) {
 	// kernel needs a tick to reap.
 	time.Sleep(200 * time.Millisecond)
 
-	// syscall.Kill(pid, 0) returns ESRCH if the process is gone.
+	// On a fully reaped grandchild, kill(pid, 0) returns ESRCH. In a pid
+	// namespace whose PID 1 does not reap orphans (rootless podman dev
+	// container), the SIGTERM still kills the process but it lingers as
+	// a zombie until the namespace exits. Either outcome proves the
+	// pgroup signal reached the grandchild; only "alive and Running /
+	// Sleeping" is a real failure. On a real WSL 2 distro PID 1 is
+	// systemd, which reaps and ESRCH wins.
 	err = syscall.Kill(grandPid, 0)
-	assert.ErrorIs(t, err, syscall.ESRCH, "grandchild pid %d still exists; pgroup signal failed", grandPid)
+	if errors.Is(err, syscall.ESRCH) {
+		return
+	}
+	require.NoError(t, err, "kill(pid, 0) returned unexpected error for pid %d", grandPid)
+	statusBytes, statErr := os.ReadFile(fmt.Sprintf("/proc/%d/status", grandPid))
+	require.NoError(t, statErr, "could not read /proc/%d/status to verify grandchild state", grandPid)
+	assert.Contains(t, string(statusBytes), "State:\tZ",
+		"grandchild pid %d is still alive (not zombie); pgroup signal failed:\n%s", grandPid, statusBytes)
 }
 
 func isSignaledKill(err error) bool {
@@ -2937,6 +2971,14 @@ A pre-implementation review surfaced five concrete failures the plan would have 
 - **C-5 (Task 8)**: `Install` mixed `DelTable` + `AddTable` in one batched netlink transaction, which can abort under nft atomic semantics when the delete targets a non-existent table. Split into two `Conn`s: a delete batch that tolerates `ENOENT`, then a create batch that propagates real errors. New `TestInstall_ReplacesStaleTable` and `TestInstall_RejectsUnknownChain` cover the recovery paths.
 
 Smaller corrections from the same pass: tightened `absPathRe` to forbid leading `-` (defense vs argv smuggling); added an `autoGenMarker` check + `WSL2_GATEWAY_IP` env override so a user-edited resolv.conf can't silently misdirect NAT; added a whitespace-only env-value rejection test; replaced a tautological DNS test with a real assertion; collapsed the `debugInt`/`boolStr` duplication; documented the env-allowlist rationale inline.
+
+**Implementation-pass (2026-05-09) corrections:**
+
+Three further failures surfaced during actual implementation against the dev-container kernel and were back-ported into the plan above. All reflect real production bugs the plan would have shipped:
+
+- **C-6 (Task 6)**: Filtering default routes via `r.Dst == nil` is wrong: `vishvananda/netlink` may surface a default route as either `Dst=nil` OR `Dst=0.0.0.0/0` depending on kernel version and the rtnetlink path that produced the entry. The plan's bare `r.Dst == nil` check would silently miss every default route surfaced as 0.0.0.0/0, leaving the WSL2 NAT default in place at startup and defeating the whole redirect. Added an `isDefaultDst(*net.IPNet) bool` helper that accepts both forms; `CaptureAndDelDefaultRoutes` and the integration test both use it. Confirmed against Alpine 3.21 / Linux 6.12 in the dev container.
+- **C-7 (Task 9)**: `TestSpawn_TerminatesProcessGroup` asserted `kill(grandPid, 0) == ESRCH` after pgroup signaling. That assertion fails inside any pid namespace whose PID 1 does not reap orphans (rootless podman containers, busybox-init Alpine, etc.) — the SIGTERM still kills the grandchild but it lingers as a zombie until the namespace exits, so `kill(0)` returns nil instead of ESRCH. Production code path (`Setpgid: true` + `cmd.Cancel = kill(-pid, SIGTERM)`) is correct; only the test was wrong. Fix: accept either ESRCH OR `State: Z` from `/proc/<pid>/status` as proof of pgroup-kill success. On real WSL 2 PID 1 is systemd, which reaps and ESRCH wins.
+- **C-8 (Task 1)**: `.gitignore` had a bare `wsl-vpnfix` entry intended to ignore the built binary at the repo root. Without a leading slash it also matched the `cmd/wsl-vpnfix/` directory, silently swallowing every untracked file inside it (`main_test.go` was lost on first add). Anchored to `/wsl-vpnfix`.
 
 **Placeholder scan:** searched for "TBD", "TODO", "implement later", "fill in details", "etc." — none in task content.
 
