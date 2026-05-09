@@ -246,8 +246,18 @@ func installNATRules(td *teardown, cfg config.Config, wsl2GW string) error {
 
 // spawnGvforwarder launches gvforwarder as our single child. The forwarder
 // spawns wsl-gvproxy.exe itself via its `stdio:` URL scheme — we never
-// spawn the .exe directly.
+// spawn the .exe directly. We do, however, stage the .exe from its Linux
+// rootfs path to a Windows-native NTFS path before passing it to
+// gvforwarder; see stageGvproxyExe for the rationale.
 func spawnGvforwarder(ctx context.Context, cfg config.Config) (*process.Handle, error) {
+	stagedExe, err := stageGvproxyExe(cfg.GvproxyPath)
+	if err != nil {
+		return nil, fmt.Errorf("stage gvproxy.exe: %w", err)
+	}
+	if stagedExe != cfg.GvproxyPath {
+		logf("gvproxy.exe staged: %s -> %s", cfg.GvproxyPath, stagedExe)
+		cfg.GvproxyPath = stagedExe
+	}
 	debugFlag := boolStr(cfg.Debug)
 	stdioURL := fmt.Sprintf("stdio:%s?listen-stdio=accept&debug=%s", cfg.GvproxyPath, debugFlag)
 	spec := process.Spec{
