@@ -4,6 +4,11 @@
 // and the loader that builds it from environment variables.
 package config
 
+import (
+	"fmt"
+	"os"
+)
+
 // VpnkitGatewayIP, VpnkitHostIP, VpnkitLocalIP, VpnkitLocalCIDR, and
 // TapPrefixLen are package-level constants — not env-overridable — because
 // gvproxy v0.8.8 has the host IP (192.168.127.254) hardcoded in its DNS
@@ -50,4 +55,49 @@ func Default() Config {
 		CheckDNS:        "1.1.1.1",
 		Debug:           false,
 	}
+}
+
+// Load builds a Config by starting from Default() and applying
+// any non-empty matching environment variables. Every override
+// is validated; any invalid value returns an error and aborts.
+func Load() (Config, error) {
+	c := Default()
+
+	type field struct {
+		envName  string
+		dst      *string
+		validate func(string) error
+	}
+	stringFields := []field{
+		{"WSL2_GATEWAY_IP", &c.WSL2GatewayIP, ValidateIPv4},
+		{"TAP_MAC_ADDR", &c.TapMACAddr, ValidateMAC},
+		{"TAP_NAME", &c.TapName, ValidateInterfaceName},
+		{"GVPROXY_PATH", &c.GvproxyPath, ValidateAbsolutePath},
+		{"GVFORWARDER_PATH", &c.GvforwarderPath, ValidateAbsolutePath},
+		{"CHECK_HOST", &c.CheckHost, ValidateHostname},
+		{"CHECK_DNS", &c.CheckDNS, ValidateIPv4},
+	}
+	for _, f := range stringFields {
+		v := os.Getenv(f.envName)
+		if v == "" {
+			continue
+		}
+		if err := f.validate(v); err != nil {
+			return Config{}, fmt.Errorf("env %s: %w", f.envName, err)
+		}
+		*f.dst = v
+	}
+
+	switch os.Getenv("DEBUG") {
+	case "":
+		// keep default
+	case "0", "false", "FALSE", "False":
+		c.Debug = false
+	case "1", "true", "TRUE", "True":
+		c.Debug = true
+	default:
+		return Config{}, fmt.Errorf("env DEBUG: invalid bool value %q", os.Getenv("DEBUG"))
+	}
+
+	return c, nil
 }
