@@ -255,8 +255,8 @@ Status:   open / fixed in <commit>
 
 ```
 Source              ← this repo, git tag is the source of truth
-Go toolchain        ← pinned in go.mod via `toolchain go1.23.4` (or current LTS at v1.0)
-Alpine rootfs base  ← FROM alpine@sha256:<digest>  (pinned, not :latest, not :3.20)
+Go toolchain        ← pinned in go.mod via `toolchain go1.25.0` (or current stable at v1.0; Go has no LTS, follow upstream stable)
+Alpine rootfs base  ← FROM alpine@sha256:<digest>  (pinned, not :latest, not :3.22)
 gvforwarder         ← https://github.com/containers/gvisor-tap-vsock/releases/download/<tag>/gvforwarder
 gvproxy-windowsgui  ← https://github.com/containers/gvisor-tap-vsock/releases/download/<tag>/gvproxy-windowsgui.exe
 sha256sums          ← https://github.com/containers/gvisor-tap-vsock/releases/download/<tag>/sha256sums

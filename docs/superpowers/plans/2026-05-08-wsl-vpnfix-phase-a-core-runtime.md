@@ -21,7 +21,7 @@ Subsystems live in `internal/`:
 `cmd/wsl-vpnfix/main.go` is a thin wiring layer.
 
 **Tech stack:**
-- Go 1.23+ (`CGO_ENABLED=0`, single static binary)
+- Go 1.25+ (`CGO_ENABLED=0`, single static binary)
 - `github.com/vishvananda/netlink` for tap/addr/route ops
 - `github.com/google/nftables` for NAT rule construction
 - Standard library for process management
@@ -139,7 +139,7 @@ mkdir -p cmd/wsl-vpnfix \
 go mod init github.com/zeroznet/wsl-vpnfix
 ```
 
-Expected: creates `go.mod` with module path and `go 1.23` (or current).
+Expected: creates `go.mod` with module path and `go 1.25` (or current).
 
 - [ ] **Step 5: Verify**
 
@@ -2976,7 +2976,7 @@ Smaller corrections from the same pass: tightened `absPathRe` to forbid leading 
 
 Three further failures surfaced during actual implementation against the dev-container kernel and were back-ported into the plan above. All reflect real production bugs the plan would have shipped:
 
-- **C-6 (Task 6)**: Filtering default routes via `r.Dst == nil` is wrong: `vishvananda/netlink` may surface a default route as either `Dst=nil` OR `Dst=0.0.0.0/0` depending on kernel version and the rtnetlink path that produced the entry. The plan's bare `r.Dst == nil` check would silently miss every default route surfaced as 0.0.0.0/0, leaving the WSL2 NAT default in place at startup and defeating the whole redirect. Added an `isDefaultDst(*net.IPNet) bool` helper that accepts both forms; `CaptureAndDelDefaultRoutes` and the integration test both use it. Confirmed against Alpine 3.21 / Linux 6.12 in the dev container.
+- **C-6 (Task 6)**: Filtering default routes via `r.Dst == nil` is wrong: `vishvananda/netlink` may surface a default route as either `Dst=nil` OR `Dst=0.0.0.0/0` depending on kernel version and the rtnetlink path that produced the entry. The plan's bare `r.Dst == nil` check would silently miss every default route surfaced as 0.0.0.0/0, leaving the WSL2 NAT default in place at startup and defeating the whole redirect. Added an `isDefaultDst(*net.IPNet) bool` helper that accepts both forms; `CaptureAndDelDefaultRoutes` and the integration test both use it. Confirmed against Alpine 3.23.4 / Linux 6.12 in the dev container.
 - **C-7 (Task 9)**: `TestSpawn_TerminatesProcessGroup` asserted `kill(grandPid, 0) == ESRCH` after pgroup signaling. That assertion fails inside any pid namespace whose PID 1 does not reap orphans (rootless podman containers, busybox-init Alpine, etc.) — the SIGTERM still kills the grandchild but it lingers as a zombie until the namespace exits, so `kill(0)` returns nil instead of ESRCH. Production code path (`Setpgid: true` + `cmd.Cancel = kill(-pid, SIGTERM)`) is correct; only the test was wrong. Fix: accept either ESRCH OR `State: Z` from `/proc/<pid>/status` as proof of pgroup-kill success. On real WSL 2 PID 1 is systemd, which reaps and ESRCH wins.
 - **C-8 (Task 1)**: `.gitignore` had a bare `wsl-vpnfix` entry intended to ignore the built binary at the repo root. Without a leading slash it also matched the `cmd/wsl-vpnfix/` directory, silently swallowing every untracked file inside it (`main_test.go` was lost on first add). Anchored to `/wsl-vpnfix`.
 
