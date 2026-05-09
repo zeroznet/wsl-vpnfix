@@ -2,7 +2,19 @@
 
 # CLAUDE.md: wsl-vpnfix
 
-This file gives Claude Code project-specific context for working in this repo. Workspace-wide rules in `/home/zero/dev/CLAUDE.md` (Boba Bott persona, attribution header, commit format, behavioral guidelines, style guide) still apply; this file only adds what is unique to wsl-vpnfix.
+This file gives Claude Code project-specific context for working in this repo. Workspace-wide rules in `/home/zero/dev/CLAUDE.md` (Boba Bott persona, attribution header, commit format, behavioral guidelines #1–#12, style guide) still apply; this file only adds what is unique to wsl-vpnfix.
+
+## Session bootstrap
+
+Before proposing any work or answering "what's next," read in this order:
+
+1. `TODO.md` — open work in priority order (Now / Later / Backlog buckets)
+2. `git log --oneline -20` — recent evolution
+3. `cmd/wsl-vpnfix/main.go` and `internal/*/` — the actual runtime, single source of truth on behavior
+4. `docs/superpowers/specs/2026-05-08-wsl-vpnfix-design.md` — frozen design contract; jump to the section relevant to whatever is being touched
+5. `docs/superpowers/plans/2026-05-08-wsl-vpnfix-phase-a-core-runtime.md` — frozen Phase A history. Corrections C-1..C-8 in the Self-Review section record what the original plan got wrong; useful when adjacent code is being changed.
+
+Live files (TODO.md, code, current spec) win over frozen plans. Project memory at `~/.claude/projects/-home-zero-dev-wsl-vpnfix/memory/` is auto-loaded; `MEMORY.md` lives there as the index.
 
 ## What this is
 
