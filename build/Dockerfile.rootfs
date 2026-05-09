@@ -93,16 +93,21 @@ RUN sha256sum /sbin/wsl-vpnfix /sbin/wsl-gvforwarder /etc/wsl-vpnfix/wsl-gvproxy
 # tightened automount. Interop must stay enabled so gvforwarder can launch
 # wsl-gvproxy.exe via WSL_INTEROP.
 #
-# [boot] systemd=true is the WSL flag that makes WSL's /init exec /sbin/init
-# (our orchestrator via the symlink below) as PID 1 inside a PID namespace.
-# It is NOT a dependency on systemd the project — our rootfs ships zero
-# systemd binaries (see Phase B addendum D-1). The flag is misnamed by
-# Microsoft; in WSL source it's just a switch that picks the "exec
-# /sbin/init" boot path. Without it, WSL drops the user into a login shell
-# and our orchestrator never runs.
+# [boot] command=/sbin/wsl-vpnfix runs the orchestrator at distro boot as a
+# child of WSL's own /init, NOT as PID 1. We tried [boot] systemd=true on
+# 2026-05-09 and it broke interop on Windows 11 + WSL kernel 6.6.87.2: WSL
+# expects systemd-style integration (sd_notify, systemctl, user sessions)
+# and when those fail, the interop layer drops into half-broken state where
+# gvproxy.exe runs but its stdio bridge to gvforwarder is one-way. Upstream
+# sakai135/wsl-vpnkit uses [boot] command= for the same reason.
+#
+# Side effect: the PID-1 reaper code in cmd/wsl-vpnfix/init.go (B2) does not
+# fire because Getpid() != 1. The code stays in the repo as defensive cover
+# in case we ever rehome to a PID-1 architecture; it adds ~50 lines and zero
+# runtime cost.
 RUN printf '%s\n' \
         '[boot]' \
-        'systemd = true' \
+        'command = /sbin/wsl-vpnfix' \
         '' \
         '[interop]' \
         'enabled = true' \
