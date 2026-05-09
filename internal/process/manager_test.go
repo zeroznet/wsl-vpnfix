@@ -5,6 +5,7 @@ package process
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -115,9 +116,21 @@ func TestSpawn_TerminatesProcessGroup(t *testing.T) {
 	// kernel needs a tick to reap.
 	time.Sleep(200 * time.Millisecond)
 
-	// syscall.Kill(pid, 0) returns ESRCH if the process is gone.
+	// On a fully reaped grandchild, kill(pid, 0) returns ESRCH. In a pid
+	// namespace whose PID 1 does not reap orphans (rootless podman dev
+	// container), the SIGTERM kills the process but it lingers as a
+	// zombie until the container exits. Either outcome proves the pgroup
+	// signal reached the grandchild; only "alive and Running/Sleeping"
+	// is a real failure.
 	err = syscall.Kill(grandPid, 0)
-	assert.ErrorIs(t, err, syscall.ESRCH, "grandchild pid %d still exists; pgroup signal failed", grandPid)
+	if errors.Is(err, syscall.ESRCH) {
+		return
+	}
+	require.NoError(t, err, "kill(pid, 0) returned unexpected error for pid %d", grandPid)
+	statusBytes, statErr := os.ReadFile(fmt.Sprintf("/proc/%d/status", grandPid))
+	require.NoError(t, statErr, "could not read /proc/%d/status to verify grandchild state", grandPid)
+	assert.Contains(t, string(statusBytes), "State:\tZ",
+		"grandchild pid %d is still alive (not zombie); pgroup signal failed:\n%s", grandPid, statusBytes)
 }
 
 func isSignaledKill(err error) bool {
