@@ -1,0 +1,24 @@
+# scripted/written by Robert Bopko (github.com/zeroznet) with Boba Bott (Claude Opus 4.7)
+
+# Dev container for wsl-vpnfix Phase A.
+# Mirrors the Phase B production runtime as closely as possible:
+# same Alpine base pinned by digest, same nftables / iproute2 packages.
+# Adds Go + git for the build/test workflow that does not ship.
+#
+# Update digest by re-pulling alpine:3.21 and copying the new RepoDigest;
+# bump the apk-pinned versions in lockstep.
+FROM alpine@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
+
+RUN apk add --no-cache \
+        go=1.23.9-r0 \
+        nftables \
+        iproute2 \
+        git \
+        ca-certificates
+
+ENV CGO_ENABLED=0 \
+    GOPATH=/root/go \
+    GOCACHE=/root/.cache/go-build \
+    PATH=/root/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+WORKDIR /work
