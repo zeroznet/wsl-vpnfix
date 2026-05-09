@@ -1,0 +1,110 @@
+# scripted/written by Robert Bopko (github.com/zeroznet) with Boba Bott (Claude Sonnet 4.6)
+#
+# Multi-stage build for the wsl-vpnfix appliance rootfs.
+# Stages:
+#   1. builder       : compile our Go orchestrator with reproducible flags
+#   2. fetcher       : download + verify upstream gvisor-tap-vsock binaries
+#   3. final         : Alpine rootfs assembly, exported by build/pack.sh
+
+# ---- Stage 1: Go builder ----
+# Same Alpine digest as dev/Containerfile and the final stage so the build
+# tree and the runtime tree share one pinned base. Bump via Renovate PR.
+FROM alpine@sha256:4d889c14e7d5a73929ab00be2ef8ff22437e7cbc545931e52554a7b00e123d8b AS builder
+
+ARG VERSION=dev
+ARG COMMIT=none
+ARG SOURCE_DATE_EPOCH=0
+
+RUN apk add --no-cache \
+        go=1.25.9-r0 \
+        git \
+        ca-certificates
+
+ENV CGO_ENABLED=0 \
+    GOPATH=/root/go \
+    GOCACHE=/root/.cache/go-build
+
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download && go mod verify
+COPY cmd ./cmd
+COPY internal ./internal
+
+# -trimpath strips build-host paths; -buildid= zeros the non-deterministic
+# Go build id; -s -w drops debug info; -X stamps version/commit. CGO off so
+# the binary is fully static and the rootfs needs no libc bridge.
+RUN go build \
+        -trimpath \
+        -ldflags "-s -w -buildid= -X main.version=${VERSION} -X main.commit=${COMMIT}" \
+        -o /out/wsl-vpnfix \
+        ./cmd/wsl-vpnfix
+
+# ---- Stage 2: Upstream fetcher ----
+FROM alpine@sha256:4d889c14e7d5a73929ab00be2ef8ff22437e7cbc545931e52554a7b00e123d8b AS fetcher
+
+ARG GVTV_TAG=v0.8.8
+ARG GVTV_GVFORWARDER_SHA256
+ARG GVTV_GVPROXY_EXE_SHA256
+
+RUN apk add --no-cache curl ca-certificates
+
+WORKDIR /upstream
+
+# Two artifacts, two checks. Fail loud on any mismatch — these checksums
+# come from build/upstream-pins.yaml via build/pack.sh build args.
+RUN set -eu; \
+    base="https://github.com/containers/gvisor-tap-vsock/releases/download/${GVTV_TAG}"; \
+    curl -fsSL "${base}/gvforwarder" -o gvforwarder; \
+    echo "${GVTV_GVFORWARDER_SHA256}  gvforwarder" | sha256sum -c -; \
+    curl -fsSL "${base}/gvproxy-windowsgui.exe" -o gvproxy-windowsgui.exe; \
+    echo "${GVTV_GVPROXY_EXE_SHA256}  gvproxy-windowsgui.exe" | sha256sum -c -; \
+    chmod 0755 gvforwarder; \
+    chmod 0644 gvproxy-windowsgui.exe
+
+# ---- Stage 3: Final rootfs ----
+FROM alpine@sha256:4d889c14e7d5a73929ab00be2ef8ff22437e7cbc545931e52554a7b00e123d8b AS final
+
+RUN apk add --no-cache \
+        nftables \
+        iproute2 \
+        ca-certificates \
+    && rm -rf /var/cache/apk/* /var/log/* /tmp/* \
+    && rm -f /usr/bin/wget
+
+# Ship the SHA-256 manifest of bundled binaries inside the rootfs so the
+# orchestrator (or a curious operator) can verify what shipped without
+# fetching anything external.
+COPY --from=builder  /out/wsl-vpnfix                        /sbin/wsl-vpnfix
+COPY --from=fetcher  /upstream/gvforwarder                  /sbin/wsl-gvforwarder
+COPY --from=fetcher  /upstream/gvproxy-windowsgui.exe       /etc/wsl-vpnfix/wsl-gvproxy.exe
+COPY                 LICENSE                                /LICENSE
+
+# /sbin/init -> /sbin/wsl-vpnfix : the rootfs has no systemd; we are PID 1.
+RUN ln -sf /sbin/wsl-vpnfix /sbin/init
+
+# Embed the pinned binaries' sha256s for in-distro verification.
+RUN sha256sum /sbin/wsl-vpnfix /sbin/wsl-gvforwarder /etc/wsl-vpnfix/wsl-gvproxy.exe \
+        > /etc/wsl-vpnfix/checksums
+
+# wsl.conf: appliance distro, root login, no Windows PATH bleeding into us,
+# tightened automount. Interop must stay enabled so gvforwarder can launch
+# wsl-gvproxy.exe via WSL_INTEROP.
+RUN printf '%s\n' \
+        '[boot]' \
+        '' \
+        '[interop]' \
+        'enabled = true' \
+        'appendWindowsPath = false' \
+        '' \
+        '[user]' \
+        'default = root' \
+        '' \
+        '[automount]' \
+        'enabled = true' \
+        'options = "metadata,umask=22,fmask=11"' \
+        > /etc/wsl.conf
+
+# File modes — explicit so a host umask cannot leak into our image.
+RUN chmod 0755 /sbin/wsl-vpnfix /sbin/wsl-gvforwarder \
+    && chmod 0644 /etc/wsl-vpnfix/wsl-gvproxy.exe /etc/wsl-vpnfix/checksums /etc/wsl.conf /LICENSE \
+    && chown -R 0:0 /sbin/wsl-vpnfix /sbin/wsl-gvforwarder /etc/wsl-vpnfix /etc/wsl.conf /LICENSE

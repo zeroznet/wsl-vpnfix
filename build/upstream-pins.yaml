@@ -1,0 +1,21 @@
+# scripted/written by Robert Bopko (github.com/zeroznet) with Boba Bott (Claude Sonnet 4.6)
+#
+# Pinned dependencies for the wsl-vpnfix release tarball. Renovate's
+# regexManager (configured in renovate.json) parses the `tag:` and
+# `sha256:` lines below and opens PRs when the upstream cuts a new release.
+#
+# Bump procedure (manual until the bot lands):
+#   1. Verify the new release does not break the spawn contract documented
+#      in ~/.claude/projects/-home-zero-dev-wsl-vpnfix/memory/project_gvisor_tap_vsock_v088.md
+#   2. Fetch the new sha256sums:
+#        curl -fsSL https://github.com/containers/gvisor-tap-vsock/releases/download/<TAG>/sha256sums
+#   3. Replace the tag and the two sha256 values below.
+#   4. Re-run B3's pack.sh; B4's smoke test on a real WSL host.
+
+gvisor_tap_vsock:
+  tag: v0.8.8
+  artifacts:
+    gvforwarder:
+      sha256: 4b674c0f4b8407c909cb440357ace2b8e733783b49b5583541552ef6fdaa592d
+    gvproxy-windowsgui.exe:
+      sha256: 8803caf895325dc2ea52337fa2c7c835c1f7f115b0bde71fdb1479d1b3710526
