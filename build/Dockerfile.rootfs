@@ -117,6 +117,9 @@ RUN printf '%s\n' \
         > /etc/wsl.conf
 
 # File modes — explicit so a host umask cannot leak into our image.
-RUN chmod 0755 /sbin/wsl-vpnfix /sbin/wsl-gvforwarder \
-    && chmod 0644 /etc/wsl-vpnfix/wsl-gvproxy.exe /etc/wsl-vpnfix/checksums /etc/wsl.conf /LICENSE \
+# wsl-gvproxy.exe MUST be 0755: WSL interop binfmt-dispatches Windows .exe
+# files based on the executable bit, not just file extension. Without +x,
+# fork/exec fails with EACCES and gvforwarder's stdio dial loops forever.
+RUN chmod 0755 /sbin/wsl-vpnfix /sbin/wsl-gvforwarder /etc/wsl-vpnfix/wsl-gvproxy.exe \
+    && chmod 0644 /etc/wsl-vpnfix/checksums /etc/wsl.conf /LICENSE \
     && chown -R 0:0 /sbin/wsl-vpnfix /sbin/wsl-gvforwarder /etc/wsl-vpnfix /etc/wsl.conf /LICENSE
