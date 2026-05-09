@@ -119,6 +119,14 @@ ${OCI} export "${CID}" -o "${TARFILE_RAW}"
 log "repacking ${TARFILE_RAW} deterministically"
 ( cd "${EXPORT_DIR}" && tar -xf "../../${TARFILE_RAW}" )
 
+# Rootless podman export through the user-namespace mapping strips group and
+# world permission bits (host umask applies during unpack). Restore standard
+# modes before the deterministic repack so the imported distro is usable.
+log "normalizing permissions in ${EXPORT_DIR} (rootless tar strips group/world bits)"
+find "${EXPORT_DIR}" -type d -exec chmod 0755 {} +
+find "${EXPORT_DIR}" -type f -perm -u+x -exec chmod 0755 {} +
+find "${EXPORT_DIR}" -type f ! -perm -u+x -exec chmod 0644 {} +
+
 # tar(1) flags for determinism: --sort=name (file order), --mtime= (fixed
 # timestamp), --owner / --group / --numeric-owner (no host UID leak),
 # --pax-option (drop variable-length extended headers).

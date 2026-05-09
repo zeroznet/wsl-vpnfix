@@ -22,7 +22,9 @@ RUN apk add --no-cache \
 
 ENV CGO_ENABLED=0 \
     GOPATH=/root/go \
-    GOCACHE=/root/.cache/go-build
+    GOCACHE=/root/.cache/go-build \
+    GOTOOLCHAIN=local \
+    GOFLAGS="-buildvcs=false -mod=readonly"
 
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -33,7 +35,8 @@ COPY internal ./internal
 # -trimpath strips build-host paths; -buildid= zeros the non-deterministic
 # Go build id; -s -w drops debug info; -X stamps version/commit. CGO off so
 # the binary is fully static and the rootfs needs no libc bridge.
-RUN go build \
+# SOURCE_DATE_EPOCH is forwarded so any tooling that honors it stays pinned.
+RUN SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH}" go build \
         -trimpath \
         -ldflags "-s -w -buildid= -X main.version=${VERSION} -X main.commit=${COMMIT}" \
         -o /out/wsl-vpnfix \
