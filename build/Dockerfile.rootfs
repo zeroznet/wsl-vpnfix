@@ -92,8 +92,17 @@ RUN sha256sum /sbin/wsl-vpnfix /sbin/wsl-gvforwarder /etc/wsl-vpnfix/wsl-gvproxy
 # wsl.conf: appliance distro, root login, no Windows PATH bleeding into us,
 # tightened automount. Interop must stay enabled so gvforwarder can launch
 # wsl-gvproxy.exe via WSL_INTEROP.
+#
+# [boot] systemd=true is the WSL flag that makes WSL's /init exec /sbin/init
+# (our orchestrator via the symlink below) as PID 1 inside a PID namespace.
+# It is NOT a dependency on systemd the project — our rootfs ships zero
+# systemd binaries (see Phase B addendum D-1). The flag is misnamed by
+# Microsoft; in WSL source it's just a switch that picks the "exec
+# /sbin/init" boot path. Without it, WSL drops the user into a login shell
+# and our orchestrator never runs.
 RUN printf '%s\n' \
         '[boot]' \
+        'systemd = true' \
         '' \
         '[interop]' \
         'enabled = true' \
