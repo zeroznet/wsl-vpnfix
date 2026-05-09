@@ -9,7 +9,32 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
+
+// gvproxyYAML is the minimal config file that works around an upstream
+// regression in gvisor-tap-vsock v0.8.8: cmd/gvproxy/config.go:125
+// declares the -listen-stdio CLI flag but the value is never written to
+// config.Interfaces.Stdio (the "Patch config with CLI args" block at
+// lines 224-262 covers qemu/bess/vfkit/vpnkit but skips stdio). Result:
+// cmd/gvproxy/main.go:291's `if config.Interfaces.Stdio != ""` always
+// fails, the AcceptStdio goroutine never starts, and the bridge is
+// silently TX-only.
+//
+// Setting interfaces.stdio in YAML config bypasses the broken CLI wiring.
+// Loading via -config also disables "default mode" (cmd/gvproxy/config.go:334),
+// so we re-supply the static fields default mode would have populated:
+// subnet, gateway IP, and gateway MAC. DHCP static lease and DNS zones
+// are skipped because we statically assign 192.168.127.2 in the orchestrator
+// and do not use containers.internal / docker.internal hostnames.
+const gvproxyYAML = `interfaces:
+  stdio: "stdio"
+stack:
+  subnet: "192.168.127.0/24"
+  gatewayIP: "192.168.127.1"
+  gatewayMacAddress: "5a:94:ef:e4:0c:dd"
+  mtu: 1500
+`
 
 // stagedGvproxyDir is a Windows-native NTFS path (DrvFs, not 9P) writable
 // to anyone WSL maps to. /mnt/c/Users/Public exists on every Windows install
@@ -46,6 +71,36 @@ func stageGvproxyExe(srcPath string) (string, error) {
 		return "", fmt.Errorf("copy %s -> %s: %w", srcPath, dstPath, err)
 	}
 	return dstPath, nil
+}
+
+// stageGvproxyConfig writes the embedded gvproxy YAML to the same staged
+// directory as the .exe and returns its path in Windows form (e.g.
+// `C:\Users\Public\.wsl-vpnfix\gvproxy.yaml`). The Windows form is what
+// gvproxy.exe expects when it does os.ReadFile from inside a Windows
+// process — argv strings are passed verbatim from Linux interop, no path
+// translation, so we must hand it a Windows path up front.
+func stageGvproxyConfig() (string, error) {
+	if err := os.MkdirAll(stagedGvproxyDir, 0o755); err != nil {
+		return "", fmt.Errorf("mkdir %s: %w", stagedGvproxyDir, err)
+	}
+	linuxPath := filepath.Join(stagedGvproxyDir, "gvproxy.yaml")
+	if err := os.WriteFile(linuxPath, []byte(gvproxyYAML), 0o644); err != nil {
+		return "", fmt.Errorf("write %s: %w", linuxPath, err)
+	}
+	return linuxToWindowsPath(linuxPath), nil
+}
+
+// linuxToWindowsPath translates a /mnt/<drive>/... DrvFs path into its
+// Windows equivalent. Returns the input unchanged if it does not match
+// the /mnt/<single-letter>/... shape.
+func linuxToWindowsPath(p string) string {
+	const prefix = "/mnt/"
+	if !strings.HasPrefix(p, prefix) || len(p) < len(prefix)+2 || p[len(prefix)+1] != '/' {
+		return p
+	}
+	drive := strings.ToUpper(p[len(prefix) : len(prefix)+1])
+	rest := strings.ReplaceAll(p[len(prefix)+2:], "/", `\`)
+	return drive + `:\` + rest
 }
 
 func sha256OfFile(path string) (string, error) {

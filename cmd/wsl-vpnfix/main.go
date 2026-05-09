@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -258,13 +259,22 @@ func spawnGvforwarder(ctx context.Context, cfg config.Config) (*process.Handle, 
 		logf("gvproxy.exe staged: %s -> %s", cfg.GvproxyPath, stagedExe)
 		cfg.GvproxyPath = stagedExe
 	}
+	configWinPath, err := stageGvproxyConfig()
+	if err != nil {
+		return nil, fmt.Errorf("stage gvproxy config: %w", err)
+	}
+	logf("gvproxy config staged: %s", configWinPath)
+
 	debugFlag := boolStr(cfg.Debug)
-	// ssh-port=-1 disables gvproxy's SSH forward listener. Default is 2222
-	// (cmd/gvproxy/config.go:121 in v0.8.8); -1 is the explicit disable
-	// sentinel (config.go:335). Without this the listener fights for 127.0.0.1:2222
-	// against any pre-existing process and gvproxy exits with
-	// "cannot add network services". We do not use SSH forwarding.
-	stdioURL := fmt.Sprintf("stdio:%s?listen-stdio=accept&debug=%s&ssh-port=-1", cfg.GvproxyPath, debugFlag)
+	// gvproxy v0.8.8 silently ignores -listen-stdio (the value never reaches
+	// config.Interfaces.Stdio); we route everything through -config instead,
+	// where interfaces.stdio is set in YAML. -ssh-port is also ignored in
+	// config-file mode (a warning is logged), so we drop it. url.Values.Encode
+	// handles the colon and backslashes in the Windows config path.
+	q := url.Values{}
+	q.Set("config", configWinPath)
+	q.Set("debug", debugFlag)
+	stdioURL := fmt.Sprintf("stdio:%s?%s", cfg.GvproxyPath, q.Encode())
 	spec := process.Spec{
 		Path: cfg.GvforwarderPath,
 		Args: []string{
