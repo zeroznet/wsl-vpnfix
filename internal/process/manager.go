@@ -19,7 +19,7 @@ import (
 type Spec struct {
 	Path   string
 	Args   []string
-	Env    []string  // nil = inherit parent env (Go's default); []string{} = empty
+	Env    []string // nil = inherit parent env (Go's default); []string{} = empty
 	Stdin  io.Reader
 	Stdout io.Writer
 	Stderr io.Writer
@@ -69,7 +69,7 @@ func (m *Manager) Spawn(ctx context.Context, s Spec) (*Handle, error) {
 }
 
 func (h *Handle) Wait() error        { return <-h.done }
-func (h *Handle) Done() <-chan error  { return h.done }
+func (h *Handle) Done() <-chan error { return h.done }
 
 func (h *Handle) Pid() int {
 	if h.cmd == nil || h.cmd.Process == nil {

@@ -69,7 +69,7 @@ func TestValidateInterfaceName(t *testing.T) {
 		{"wsltap", true},
 		{"eth0", true},
 		{"a", true},
-		{"abcdefghijklmno", true},  // 15 chars, max
+		{"abcdefghijklmno", true},   // 15 chars, max
 		{"abcdefghijklmnop", false}, // 16 chars, too long
 		{"with space", false},
 		{"semi;colon", false},
@@ -103,12 +103,12 @@ func TestValidateAbsolutePath(t *testing.T) {
 		{"/with space/file", false},
 		{"/with;semi", false},
 		{"/with$dollar", false},
-		{"/etc/../etc/shadow", false},   // traversal
-		{"/etc/wsl-vpnfix/..", false},   // trailing traversal
+		{"/etc/../etc/shadow", false}, // traversal
+		{"/etc/wsl-vpnfix/..", false}, // trailing traversal
 		{"/..", false},
-		{"/etc/./wsl-vpnfix", false},    // current-dir segment
-		{"/-rf", false},                 // would smuggle as argv flag
-		{"/-foo/bar", false},            // leading dash on first segment
+		{"/etc/./wsl-vpnfix", false}, // current-dir segment
+		{"/-rf", false},              // would smuggle as argv flag
+		{"/-foo/bar", false},         // leading dash on first segment
 	}
 	for _, c := range cases {
 		t.Run(c.in, func(t *testing.T) {
