@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 280" role="img" aria-label="wsl-vpnfix">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#010409"/>
+    </linearGradient>
+    <style>
+      .mono { font-family: ui-monospace, "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace; }
+      .prompt { fill: #58a6ff; }
+      .cmd { fill: #c9d1d9; }
+      .ok { fill: #3fb950; }
+      .err { fill: #f85149; }
+      .dim { fill: #8b949e; }
+      .accent { fill: #d29922; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="720" height="280" rx="16" fill="url(#bg)" stroke="#30363d" stroke-width="1"/>
+
+  <circle cx="22" cy="22" r="6" fill="#ff5f56"/>
+  <circle cx="42" cy="22" r="6" fill="#ffbd2e"/>
+  <circle cx="62" cy="22" r="6" fill="#27c93f"/>
+  <text x="360" y="26" text-anchor="middle" class="mono dim" font-size="11">wsl 2 · corp vpn active</text>
+
+  <g font-size="18" class="mono">
+    <text x="24" y="74"><tspan class="prompt">$</tspan> <tspan class="cmd">curl -sI https://1.1.1.1</tspan></text>
+    <text x="24" y="100" class="err">curl: (7) Couldn't connect to host</text>
+
+    <text x="24" y="138"><tspan class="prompt">$</tspan> <tspan class="cmd">wsl -d wsl-vpnfix</tspan>  <tspan class="dim">↳ tap up · gvproxy linked · nat installed</tspan></text>
+
+    <text x="24" y="176"><tspan class="prompt">$</tspan> <tspan class="cmd">curl -sI https://1.1.1.1</tspan></text>
+    <text x="24" y="202" class="ok">HTTP/2 200</text>
+    <text x="24" y="228" class="dim">192.168.127.2 → gvproxy → host network → vpn-bypassed</text>
+  </g>
+
+  <text x="696" y="262" text-anchor="end" class="mono accent" font-size="12">wsl-vpnfix · vpn does not get to black-hole wsl</text>
+</svg>

@@ -1,0 +1,83 @@
+# scripted/written by Robert Bopko (github.com/zeroznet) with Boba Bott (Claude Opus 4.7)
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions: read-all
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: ci
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          set -eu
+          out=$(gofmt -l .)
+          if [ -n "${out}" ]; then
+            echo "::error::unformatted files:"
+            printf '%s\n' "${out}"
+            exit 1
+          fi
+
+      - name: go vet
+        run: |
+          set -eu
+          go vet ./...
+          go vet -tags=integration ./...
+
+      - name: go mod verify
+        run: go mod verify
+
+      - name: govulncheck
+        run: |
+          set -eu
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...
+
+      - name: Unit tests
+        run: go test -count=1 ./...
+
+      - name: Ensure /dev/net/tun is accessible
+        run: |
+          set -eu
+          sudo modprobe tun || true
+          sudo chmod 0666 /dev/net/tun
+          ls -la /dev/net/tun
+
+      - name: Integration tests
+        run: |
+          set -eu
+          sudo -E env "PATH=$PATH" go test -count=1 -tags=integration ./...
+
+      - name: Build verify
+        run: |
+          set -eu
+          CGO_ENABLED=0 go build \
+            -trimpath \
+            -ldflags "-s -w -buildid=" \
+            -o /dev/null \
+            ./cmd/wsl-vpnfix
+
+      - name: Race detector (CGO required)
+        run: |
+          set -eu
+          CGO_ENABLED=1 go test -race -count=1 ./...

@@ -1,0 +1,100 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    ":disableDependencyDashboard"
+  ],
+  "schedule": [
+    "before 6am on monday"
+  ],
+  "timezone": "Europe/Bratislava",
+  "labels": [
+    "dependencies"
+  ],
+  "automerge": false,
+  "rangeStrategy": "pin",
+  "prHourlyLimit": 4,
+  "prConcurrentLimit": 6,
+  "configMigration": true,
+  "packageRules": [
+    {
+      "matchManagers": ["gomod"],
+      "groupName": "go modules",
+      "addLabels": ["deps:go"],
+      "commitMessagePrefix": "deps(go):",
+      "commitMessageTopic": "{{depName}}",
+      "commitMessageExtra": "to {{newVersion}}"
+    },
+    {
+      "matchFileNames": [
+        "dev/Containerfile",
+        "build/Dockerfile.rootfs"
+      ],
+      "groupName": "alpine base + go toolchain (lockstep)",
+      "addLabels": ["deps:alpine"],
+      "commitMessagePrefix": "deps(alpine):",
+      "commitMessageTopic": "{{depName}}",
+      "commitMessageExtra": "to {{newVersion}}"
+    },
+    {
+      "matchFileNames": [
+        "build/upstream-pins.yaml"
+      ],
+      "groupName": "gvisor-tap-vsock release",
+      "addLabels": ["deps:gvisor-tap-vsock"],
+      "commitMessagePrefix": "deps(gvisor-tap-vsock):",
+      "commitMessageTopic": "containers/gvisor-tap-vsock",
+      "commitMessageExtra": "to {{newVersion}}"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": [
+        "^dev/Containerfile$",
+        "^build/Dockerfile\\.rootfs$"
+      ],
+      "matchStrings": [
+        "FROM\\s+alpine@(?<currentDigest>sha256:[a-f0-9]{64})"
+      ],
+      "currentValueTemplate": "latest",
+      "depNameTemplate": "alpine",
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": [
+        "^dev/Containerfile$",
+        "^build/Dockerfile\\.rootfs$"
+      ],
+      "matchStrings": [
+        "go=(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+-r[0-9]+)"
+      ],
+      "depNameTemplate": "go",
+      "datasourceTemplate": "repology",
+      "packageNameTemplate": "alpine_3_23/go",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": [
+        "^build/upstream-pins\\.yaml$"
+      ],
+      "matchStrings": [
+        "tag:\\s+(?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)"
+      ],
+      "depNameTemplate": "containers/gvisor-tap-vsock",
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "semver"
+    }
+  ],
+  "postUpdateOptions": [
+    "gomodTidy"
+  ],
+  "ignorePaths": [
+    "**/testdata/**",
+    "**/vendor/**"
+  ]
+}

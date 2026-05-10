@@ -1,0 +1,103 @@
+# scripted/written by Robert Bopko (github.com/zeroznet) with Boba Bott (Claude Opus 4.7)
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions: read-all
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate tag format
+        run: |
+          set -eu
+          tag="${GITHUB_REF_NAME}"
+          if printf '%s\n' "${tag}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "tag=${tag} OK"
+          else
+            echo "::error::tag '${tag}' does not match ^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+            exit 1
+          fi
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Strip leading 'v' for pack.sh
+        id: version
+        run: |
+          set -eu
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Build the release tarball
+        run: |
+          set -eu
+          build/pack.sh "${{ steps.version.outputs.version }}"
+
+      - name: Verify the artifact exists and capture metadata
+        id: artifact
+        run: |
+          set -eu
+          tarball="out/wsl-vpnfix-${{ steps.version.outputs.version }}.tar.gz"
+          [ -f "${tarball}" ] || { echo "::error::missing ${tarball}"; exit 1; }
+          sha=$(sha256sum "${tarball}" | awk '{print $1}')
+          size=$(wc -c <"${tarball}")
+          echo "tarball=${tarball}" >> "$GITHUB_OUTPUT"
+          echo "sha256=${sha}" >> "$GITHUB_OUTPUT"
+          echo "size=${size}" >> "$GITHUB_OUTPUT"
+
+      - name: Compute SHA256SUMS
+        run: |
+          set -eu
+          tarball="${{ steps.artifact.outputs.tarball }}"
+          ( cd "$(dirname "${tarball}")" && sha256sum "$(basename "${tarball}")" ) > out/SHA256SUMS
+          ( cd build && sha256sum upstream-pins.yaml ) >> out/SHA256SUMS
+          cat out/SHA256SUMS
+
+      - name: Create GitHub Release and upload assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          tag="${GITHUB_REF_NAME}"
+          tarball="${{ steps.artifact.outputs.tarball }}"
+          notes=$(mktemp)
+          cat > "${notes}" <<EOF
+          wsl-vpnfix ${tag}
+
+          **Install (PowerShell, no admin):**
+          \`\`\`powershell
+          iwr -UseBasicParsing https://raw.githubusercontent.com/zeroznet/wsl-vpnfix/main/scripts/install-wslvpnfix.ps1 | iex
+          \`\`\`
+
+          **Verify:**
+          \`\`\`
+          sha256sum -c SHA256SUMS
+          \`\`\`
+
+          See \`build/upstream-pins.yaml\` for the exact \`gvisor-tap-vsock\` release this build pinned.
+          EOF
+          gh release create "${tag}" \
+            --title "${tag}" \
+            --notes-file "${notes}" \
+            --verify-tag \
+            "${tarball}" \
+            "out/SHA256SUMS" \
+            "build/upstream-pins.yaml"
