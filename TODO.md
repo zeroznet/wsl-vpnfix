@@ -6,7 +6,7 @@ Open work only, ordered by temporal urgency: **Now** = active sprint or next-act
 
 ## Now
 
-- [ ] **B4 work-PC validation: VPN-bypass smoke on the corp-VPN host.** Home-PC bridge validation green (`docs/smoke-2026-05-10.md`); the VPN-blackhole property is unproven until a run on the work PC with the misbehaving VPN connected. Procedure identical to the home-PC run (`docs/superpowers/plans/2026-05-09-wsl-vpnfix-phase-b-rootfs-and-release.md` Task B4) — but install via the public release now, not a USB-carried tarball: `iwr -UseBasicParsing https://raw.githubusercontent.com/zeroznet/wsl-vpnfix/main/scripts/install-wslvpnfix.ps1 | iex`. On green: write `docs/smoke-2026-05-XX-workpc-vpn.md` and close B4 fully.
+- [ ] **Phase C kickoff brainstorm.** Phase B fully closed (work-PC VPN smoke green per `docs/smoke-2026-05-10-workpc-vpn.md`). Phase C scope is in Later. Before writing the plan, brainstorm against the spec section 3 + smoke notes to decide order (audit doc first vs threat model first vs spec rebase first), what level of formality the audit doc needs, whether to ship `v1.0.0` immediately after audit or with an `rc` cycle.
 
 ## Later
 
