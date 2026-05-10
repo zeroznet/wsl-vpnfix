@@ -87,7 +87,7 @@ Open **PowerShell** (regular, not admin) and run:
 iwr -UseBasicParsing https://raw.githubusercontent.com/zeroznet/wsl-vpnfix/main/scripts/install-wslvpnfix.ps1 | iex
 ```
 
-This pulls the latest release tarball from GitHub Releases, verifies it against `SHA256SUMS`, imports it as the `wsl-vpnfix` distro under `%LOCALAPPDATA%\wsl-vpnfix\`, starts the appliance silently in the background (no visible console window), and drops a tiny `wsl-vpnfix.vbs` launcher into your Windows Startup folder so it auto-starts at every logon. After the script returns, your other WSL distros already have working network connectivity through it.
+This pulls the latest release tarball from GitHub Releases, verifies it against `SHA256SUMS`, imports it as the `wsl-vpnfix` distro under `%LOCALAPPDATA%\wsl-vpnfix\`, starts the appliance silently in the background (no visible console window), and registers a per-user Task Scheduler entry named `wsl-vpnfix` that re-launches it at every logon. Native Windows mechanism, no scripts in `shell:startup`, auditable from `taskschd.msc`. After the script returns, your other WSL distros already have working network connectivity through it.
 
 Override the defaults with parameters:
 
@@ -153,12 +153,15 @@ Manual control, if you ever need it:
 
 | Action | Command |
 |---|---|
-| Restart the appliance | `wsl --terminate wsl-vpnfix; wsl -d wsl-vpnfix --exec /bin/true` |
+| Restart the appliance | `wsl --terminate wsl-vpnfix; Start-ScheduledTask -TaskName wsl-vpnfix` |
 | Stop the appliance | `wsl --terminate wsl-vpnfix` |
-| Disable auto-start at logon | `Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\wsl-vpnfix.vbs"` |
-| Inspect the orchestrator's logs interactively | `wsl -d wsl-vpnfix` (drops you into a root shell; the orchestrator stdout is captured per session) |
+| Audit the auto-start entry | `Get-ScheduledTask -TaskName wsl-vpnfix \| Select-Object -Property *` (or `taskschd.msc`) |
+| Disable auto-start at logon | `Disable-ScheduledTask -TaskName wsl-vpnfix` |
+| Re-enable auto-start at logon | `Enable-ScheduledTask -TaskName wsl-vpnfix` |
+| Remove auto-start entirely | `Unregister-ScheduledTask -TaskName wsl-vpnfix -Confirm:$false` |
+| Inspect the orchestrator interactively | `wsl -d wsl-vpnfix` (drops you into a root shell; the orchestrator stdout is captured per session) |
 
-The auto-start mechanism is one `.vbs` file in your per-user Startup folder. No service, no scheduled task, no admin rights. Anything you'd inspect with a sysadmin's eye is right there in `shell:startup`.
+The auto-start mechanism is a single per-user Task Scheduler entry. No service, no admin rights, no scripts in `shell:startup`. The task action is a plain hidden `powershell.exe` that calls `wsl.exe -d wsl-vpnfix --exec /bin/true` and exits — the orchestrator stays alive as a child of WSL's `/init`.
 
 ## Updating
 
@@ -171,7 +174,7 @@ The installer detects an existing `wsl-vpnfix` distro, prompts before overwritin
 ## Uninstall
 
 ```powershell
-Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\wsl-vpnfix.vbs"
+Unregister-ScheduledTask -TaskName wsl-vpnfix -Confirm:$false
 wsl --terminate wsl-vpnfix
 wsl --unregister wsl-vpnfix
 Remove-Item -Recurse "$env:LOCALAPPDATA\wsl-vpnfix"

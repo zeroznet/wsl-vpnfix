@@ -4,10 +4,11 @@
 #
 # Resolves the requested release tag from GitHub, downloads the rootfs
 # tarball plus SHA256SUMS, verifies the tarball's SHA-256 against the
-# manifest, and imports it as a WSL 2 distro. Then starts the appliance
-# silently (no visible console window) and drops a small .vbs launcher
-# into the per-user Windows shell:startup folder so the appliance boots
-# again automatically at every Windows logon.
+# manifest, and imports it as a WSL 2 distro. Then registers a per-user
+# Task Scheduler entry that starts the appliance silently at every Windows
+# logon — native Windows mechanism, no scripts in shell:startup, auditable
+# in `taskschd.msc`. Also kicks the appliance up immediately so you do not
+# have to log out / in.
 #
 # Designed to run from a `iwr ... | iex` one-liner; also runs cleanly
 # from a saved file.
@@ -116,40 +117,47 @@ try {
     Remove-Item -Recurse -Force -Path $Tmp -ErrorAction SilentlyContinue
 }
 
-# Silent launcher: WScript.Shell.Run with bWindowStyle=0 hides the wsl.exe
-# console entirely. --exec /bin/true triggers WSL to boot the distro (which
-# fires the [boot] command -> /sbin/wsl-vpnfix orchestrator as a child of
-# /init), runs /bin/true, and exits. The orchestrator keeps running, so
-# the distro stays in 'Running' state and the WSL VM stays alive.
-$StartupDir = [Environment]::GetFolderPath('Startup')
-$VbsPath = Join-Path $StartupDir 'wsl-vpnfix.vbs'
+# Hidden launcher: powershell.exe with -WindowStyle Hidden creates no
+# console; the wsl.exe child it spawns inherits that state, so no window
+# appears at any point. --exec /bin/true triggers WSL to boot the distro
+# (which fires the [boot] command -> /sbin/wsl-vpnfix orchestrator as a
+# child of /init), runs the no-op, and exits. The orchestrator keeps
+# running, so the distro stays in 'Running' state and the WSL VM stays
+# alive.
+$TaskName = 'wsl-vpnfix'
+$LaunchExe = 'powershell.exe'
+$LaunchArgs = "-WindowStyle Hidden -NoProfile -Command `"& wsl.exe -d $DistroName --exec /bin/true`""
+
+function Start-Hidden {
+    Start-Process -FilePath $LaunchExe -ArgumentList $LaunchArgs -WindowStyle Hidden | Out-Null
+}
 
 if ($NoAutoStart) {
-    Write-Warn "Auto-start skipped (-NoAutoStart). Start it on demand with:"
-    Write-Host "  Start-Process wscript.exe -ArgumentList ""<vbs>""  # hidden, no root window"
-    Write-Host "  wsl -d $DistroName --exec /bin/true                # equivalent, brief flash"
+    Write-Warn 'Auto-start at logon skipped (-NoAutoStart).'
+    Write-Step 'Starting the appliance once now (background, hidden)'
+    Start-Hidden
 } else {
-    Write-Step "Configuring silent auto-start at every Windows logon"
-    $VbsContent = @"
-' wsl-vpnfix silent launcher — created by install-wslvpnfix.ps1.
-' Delete this file to disable auto-start at logon.
-CreateObject("WScript.Shell").Run "wsl -d $DistroName --exec /bin/true", 0, False
-"@
-    Set-Content -Path $VbsPath -Value $VbsContent -Encoding ASCII
-    Write-Ok "launcher: $VbsPath"
+    Write-Step "Registering Task Scheduler entry '$TaskName' (At logon, hidden, no admin)"
+    $UserId = if ($env:USERDOMAIN) { "$env:USERDOMAIN\$env:USERNAME" } else { $env:USERNAME }
+    $action = New-ScheduledTaskAction -Execute $LaunchExe -Argument $LaunchArgs
+    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $UserId
+    $settings = New-ScheduledTaskSettingsSet -Hidden -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 2)
+    $principal = New-ScheduledTaskPrincipal -UserId $UserId -LogonType Interactive -RunLevel Limited
+    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
+    Write-Ok "task registered (audit: taskschd.msc, or schtasks /query /tn $TaskName /v)"
 
-    Write-Step 'Starting wsl-vpnfix in the background (no visible window)'
-    & wscript.exe $VbsPath
-    Start-Sleep -Seconds 3
+    Write-Step "Triggering initial run via the task"
+    Start-ScheduledTask -TaskName $TaskName
+}
 
-    $running = (& wsl.exe --list --running --quiet) 2>$null |
-        ForEach-Object { ($_ -replace "`0", '').Trim() } |
-        Where-Object { $_ -eq $DistroName }
-    if ($running) {
-        Write-Ok "$DistroName is Running"
-    } else {
-        Write-Warn "$DistroName not yet showing as Running — give it a few seconds and check 'wsl -l -v'"
-    }
+Start-Sleep -Seconds 3
+$running = (& wsl.exe --list --running --quiet) 2>$null |
+    ForEach-Object { ($_ -replace "`0", '').Trim() } |
+    Where-Object { $_ -eq $DistroName }
+if ($running) {
+    Write-Ok "$DistroName is Running"
+} else {
+    Write-Warn "$DistroName not yet showing as Running — give it a few seconds and check 'wsl -l -v'"
 }
 
 Write-Host ''
@@ -163,7 +171,7 @@ Write-Host "  wsl -d Ubuntu -- curl -sI https://1.1.1.1   # expect HTTP/2 200"
 Write-Host ''
 Write-Host 'Uninstall:'
 if (-not $NoAutoStart) {
-    Write-Host "  Remove-Item ""$VbsPath"""
+    Write-Host "  Unregister-ScheduledTask -TaskName $TaskName -Confirm:`$false"
 }
 Write-Host "  wsl --terminate $DistroName"
 Write-Host "  wsl --unregister $DistroName"
