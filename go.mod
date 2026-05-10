@@ -1,6 +1,6 @@
 module github.com/zeroznet/wsl-vpnfix
 
-go 1.25.0
+go 1.25.9
 
 require (
 	github.com/google/nftables v0.3.0
