@@ -269,12 +269,12 @@ Findings are grouped by area. Severity is implicit in the area grouping — no s
 | `docs/superpowers/plans/2026-05-08-wsl-vpnfix-phase-a-core-runtime.md` Self-Review section, "Code-review pass (2026-05-08) corrections" subsection | Findings C-1 through C-5 (TUNSETIFF MAC pinning, pgroup signaling for grandchild reaping, `CaptureAndDelDefaultRoutes` snapshot, MASQUERADE saddr CIDR scope per F-007 — note this one is later reversed, nft atomic split). |
 | same Self-Review section, "Implementation-pass (2026-05-09) corrections" subsection | Findings C-6 through C-8 (`isDefaultDst` for `Dst=nil` OR `0.0.0.0/0`, pgroup-kill test PID-namespace adaptation, `.gitignore` anchor fix). |
 | same Self-Review section, "Smaller corrections from the same pass" paragraph | Three smaller security-relevant findings (tightened `absPathRe` against argv smuggling, `autoGenMarker` + `WSL2_GATEWAY_IP` env override against silently misdirected NAT, whitespace-only env-value rejection). The DNS-test tautology fix and the `debugInt`/`boolStr` dedup are code-quality housekeeping, not audit material — skip them. |
-| `docs/smoke-2026-05-10.md` "Bug fixes that came out of this smoke run" table (lines 28–37) | Findings for commits `974e9b4` (gvproxy 9P → NTFS DrvFs page-fault workaround), `2b54529` (`-ssh-port=-1` to disable gvproxy default SSH listener), `e30d045` (`-config` YAML workaround for upstream `-listen-stdio` regression), `0893652` (MASQUERADE saddr-scope drop = F-007 reversal). |
-| `docs/smoke-2026-05-10-workpc-vpn.md` "Master-spec implications (work-PC validations)" section (lines 30–32) | Confirms F-007 reversal is required in production (sibling distros sit in `172.x.x.x`, outside `192.168.127.0/24`); cite as evidence on the F-007 finding. |
+| `docs/smoke-2026-05-10.md` "Bug fixes that came out of this smoke run" table (lines 28–37), excluding `0893652` which is catalogued separately as F-007 below | Findings for commits `974e9b4` (gvproxy 9P → NTFS DrvFs page-fault workaround), `2b54529` (`-ssh-port=-1` to disable gvproxy default SSH listener), `e30d045` (`-config` YAML workaround for upstream `-listen-stdio` regression). |
+| same smoke note (commit `0893652`) plus `docs/smoke-2026-05-10-workpc-vpn.md` "Master-spec implications (work-PC validations)" section (lines 30–32) | One catalogue entry **reserved as F-007**: MASQUERADE saddr-scope drop = the F-007 reversal. The work-PC smoke note confirms the reversal is required in production (sibling distros sit in `172.x.x.x`, outside `192.168.127.0/24`); cite both smoke notes as evidence on the F-007 entry. The Phase A C-4 finding originally added the saddr scope per the master spec's hypothetical F-007; reality reversed it. Do not catalogue C-4 separately — its entry IS F-007 with the inverted conclusion. |
 | `TODO.md` Backlog | Two known gaps (default-route persistence, `wsl-vpnfixctl` debug subcommand) — added to `TODO.md` Backlog in Task C3. The audit doc references them with status `tracked-in-TODO`. |
 | `CLAUDE.md` Status section + `TODO.md` Backlog "Re-enable strict `govulncheck`" bullet | Two tracked workarounds (govulncheck non-blocking pending alpine apk Go 1.25.10, gvproxy v0.8.8 stdio regression workaround). |
 
-Total expected count: 8 (C-1..C-8) + 3 (smaller A-pass) + 4 (B3 follow-on) + 1 (F-007 reversal as its own catalogued finding) + 2 (known gaps) + 2 (tracked workarounds) = **20 findings**.
+Total expected count: 7 (Phase A C-1, C-2, C-3, C-5, C-6, C-7, C-8 — C-4 is folded into F-007) + 3 (smaller A-pass) + 3 (B3 follow-on excluding `0893652`) + 1 (F-007 = `0893652` reversal, narrating both Phase A C-4 reasoning and production reality) + 2 (known gaps) + 2 (tracked workarounds) = **18 findings**.
 
 - [ ] **Step 1: Create the feature branch**
 
@@ -352,13 +352,13 @@ The F-007 entry **must** narrate both the original Phase A C-4 reasoning (why we
 grep -c '^- F-' docs/SECURITY-AUDIT.md
 ```
 
-Expected: `20` (matches the source-material breakdown above).
+Expected: `18` (matches the source-material breakdown above; `0893652` is catalogued only once as F-007, and Phase A C-4 is folded into F-007 because C-4's fix is exactly what F-007 reverses).
 
 ```bash
 grep -E '^- F-[0-9]{3} .+ — .+; status: .+\.$' docs/SECURITY-AUDIT.md | wc -l
 ```
 
-Expected: `20` (every line matches the required `F-NNN <title> — <risk>; status: <...>` pattern).
+Expected: `18` (every line matches the required `F-NNN <title> — <risk>; status: <...>` pattern).
 
 ```bash
 grep '^- F-007 ' docs/SECURITY-AUDIT.md
@@ -376,25 +376,25 @@ Expected: `8` (Orchestrator, Netfilter, Supply chain, WSL interop, Build, Known 
 
 ```bash
 git add docs/SECURITY-AUDIT.md
-git commit -m "audit: docs/SECURITY-AUDIT.md short catalogue — Phase A C-1..C-8 + 3 smaller A-pass + 4 B3 follow-on + F-007 reversal + 2 known gaps + 2 tracked workarounds (20 findings, severity implicit in area grouping)"
+git commit -m "audit: docs/SECURITY-AUDIT.md short catalogue — 7 Phase A corrections (C-4 folded into F-007) + 3 smaller A-pass + 3 B3 follow-on + F-007 reversal (commit 0893652) + 2 known gaps + 2 tracked workarounds (18 findings, severity implicit in area grouping)"
 ```
 
 - [ ] **Step 5: Push and open PR**
 
 ```bash
 git push -u origin phase-c/audit-doc
-gh pr create --title "audit: docs/SECURITY-AUDIT.md short catalogue (20 findings)" --body "$(cat <<'EOF'
+gh pr create --title "audit: docs/SECURITY-AUDIT.md short catalogue (18 findings)" --body "$(cat <<'EOF'
 ## Summary
 
 - New `docs/SECURITY-AUDIT.md`, short-catalogue style per `docs/THREAT-MODEL.md` section 5.
-- 20 findings: 8 Phase A self-review corrections (C-1..C-8), 3 smaller security-relevant Phase A corrections, 4 Phase B follow-on fixes from smoke testing, F-007 reversal as its own catalogued finding (records why the original Phase A C-4 fix was wrong-shape), 2 known gaps (default-route persistence + `wsl-vpnfixctl`), 2 tracked workarounds (govulncheck non-blocking + gvproxy v0.8.8 stdio regression).
+- 18 findings: 7 Phase A self-review corrections (C-1, C-2, C-3, C-5, C-6, C-7, C-8 — C-4 is folded into F-007 because C-4's saddr-scope fix is exactly what F-007 reverses), 3 smaller security-relevant Phase A corrections, 3 Phase B follow-on fixes from smoke testing (974e9b4, 2b54529, e30d045), F-007 reversal (commit 0893652) as its own catalogued finding narrating both the Phase A C-4 reasoning and the production reality that contradicted it, 2 known gaps (default-route persistence + `wsl-vpnfixctl`), 2 tracked workarounds (govulncheck non-blocking + gvproxy v0.8.8 stdio regression).
 - Severity implicit in area grouping (orchestrator, netfilter, supply-chain, wsl-interop, build, known-gaps, tracked-workarounds) — no separate severity field.
 
 ## Test plan
 
-- [ ] `grep -c '^- F-' docs/SECURITY-AUDIT.md` returns 20.
+- [ ] `grep -c '^- F-' docs/SECURITY-AUDIT.md` returns 18.
 - [ ] Every finding line matches `F-NNN <title> — <risk>; status: <...>` pattern.
-- [ ] F-007 entry narrates both Phase A C-4 reasoning and production reversal.
+- [ ] F-007 entry narrates both Phase A C-4 reasoning and production reversal; commit `0893652` is in its status field.
 - [ ] No leaked Slovak in the doc text.
 EOF
 )"
@@ -545,10 +545,13 @@ The bullet currently in `TODO.md` Now that begins with "**Phase C kickoff brains
 
 - [ ] **Step 10: Repo-wide grep sweep for dangling addendum references**
 
+The plan file at `docs/superpowers/plans/2026-05-10-wsl-vpnfix-phase-c-audit-and-release.md` legitimately mentions the addendum filename when describing what to delete (this very step, the `git rm` step, the file-structure section, the PR body). That is historical execution record, not a live reference. Both sweeps below exclude `docs/superpowers/plans/` so the matches do not mask real dangling references elsewhere.
+
 ```bash
 grep -rn '2026-05-09-wsl-vpnfix-phase-b-design' \
   --include='*.md' --include='*.json' --include='*.go' --include='*.sh' \
   --include='*.yml' --include='*.yaml' --include='*.ps1' \
+  --exclude-dir='plans' \
   .
 ```
 
@@ -558,6 +561,7 @@ Expected: zero output. If any reference remains, fix it in this same commit.
 grep -rn -E 'Phase B addendum|phase-b-design' \
   --include='*.md' --include='*.json' --include='*.go' --include='*.sh' \
   --include='*.yml' --include='*.yaml' --include='*.ps1' \
+  --exclude-dir='plans' \
   .
 ```
 
@@ -602,7 +606,7 @@ gh pr create --title "spec: master-spec rebase, addendum delete, TODO/CLAUDE.md 
 
 ## Test plan
 
-- [ ] `grep -rn '2026-05-09-wsl-vpnfix-phase-b-design' --include='*.md' --include='*.json' --include='*.go' --include='*.sh' --include='*.yml' --include='*.yaml' --include='*.ps1' .` returns nothing.
+- [ ] `grep -rn '2026-05-09-wsl-vpnfix-phase-b-design' --include='*.md' --include='*.json' --include='*.go' --include='*.sh' --include='*.yml' --include='*.yaml' --include='*.ps1' --exclude-dir='plans' .` returns nothing (the plan file in `docs/superpowers/plans/` legitimately mentions the addendum filename as a historical execution record and is excluded from the sweep).
 - [ ] `grep -nE 'cosign|SBOM|syft|SLSA|reproducibility\.yml|id-token: write' docs/superpowers/specs/2026-05-08-wsl-vpnfix-design.md` returns nothing.
 - [ ] Master spec section 8 is one paragraph (≤ 5 lines).
 - [ ] Master spec frontmatter status reads "Living spec, last rebased 2026-05-10 …".
@@ -669,11 +673,15 @@ wsl-vpnfix-0.2.0.tar.gz
 ```
 
 ```bash
-gh release download v0.2.0 --pattern 'SHA256SUMS' --pattern 'wsl-vpnfix-0.2.0.tar.gz' --dir /tmp/v020-verify
+gh release download v0.2.0 \
+  --pattern 'SHA256SUMS' \
+  --pattern 'wsl-vpnfix-0.2.0.tar.gz' \
+  --pattern 'upstream-pins.yaml' \
+  --dir /tmp/v020-verify
 cd /tmp/v020-verify && sha256sum -c SHA256SUMS
 ```
 
-Expected: `wsl-vpnfix-0.2.0.tar.gz: OK`. If it fails, the release is corrupt — investigate before announcing.
+Expected: `wsl-vpnfix-0.2.0.tar.gz: OK` and `upstream-pins.yaml: OK` (release pipeline writes checksums for both — downloading only the tarball would fail `sha256sum -c` on the missing file). If either reports `FAILED` or anything other than `OK`, the release is corrupt — investigate before announcing.
 
 ```bash
 rm -rf /tmp/v020-verify
