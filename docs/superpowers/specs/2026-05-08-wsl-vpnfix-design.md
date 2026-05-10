@@ -90,16 +90,15 @@ WSL 2 (default NAT mode) hosts every imported distro inside one Linux VM with a 
 
 | Component | Where | Owner | Pinned? |
 |---|---|---|---|
-| `wsl-vpnfix` Go orchestrator | Linux side, in our distro, run by systemd | us | source-in-repo |
+| `wsl-vpnfix` Go orchestrator | Linux side, in our distro, launched at boot via `wsl.conf` `[boot] command=` as a child of WSL's `/init` (no systemd) | us | source-in-repo |
 | `wsl-gvforwarder` | Linux side, child of orchestrator | upstream `containers/gvisor-tap-vsock` | yes (SHA-256) |
 | `wsl-gvproxy.exe` | Windows side, child of orchestrator (WSL interop) | upstream `containers/gvisor-tap-vsock` (`gvproxy-windowsgui.exe`) | yes (SHA-256) |
 | Alpine rootfs | Linux side, the distro we ship | us, base from Alpine | base image pinned by digest |
-| `wsl-vpnfix.service` | Linux side, baked into rootfs | us | source-in-repo |
 | `wsl.conf` | Linux side, baked into rootfs | us | source-in-repo |
 
 ### 2.4 Lifecycle
 
-1. **Boot:** WSL launches the distro. systemd starts `wsl-vpnfix.service`.
+1. **Boot:** WSL launches the distro. WSL's `/init` reads `/etc/wsl.conf` and execs `/sbin/wsl-vpnfix` per the `[boot] command=` directive (no systemd, no PID 1).
 2. **Init:** orchestrator reads env vars; validates every IP / MAC / path against strict regex; refuses to start on any malformed input.
 3. **Spawn gvproxy on Windows:** orchestrator launches `wsl-gvproxy.exe` via WSL interop with stdio plumbed to a pipe pair owned by the orchestrator.
 4. **Spawn gvforwarder on Linux:** with the same stdio pair, gvforwarder opens `/dev/net/tun`, configures `wsltap`, starts the frame copy loop.
@@ -111,7 +110,7 @@ WSL 2 (default NAT mode) hosts every imported distro inside one Linux VM with a 
 ### 2.5 Configuration
 
 - The IP plan (`192.168.127.0/24`, gateway `.1`, host `.254`, local `.2`) is **compile-time fixed**, not env-overridable. gvproxy v0.8.8 hardcodes the host IP (`.254`) in its DNS records for `host.containers.internal` and the `.2:5a:94:ef:e4:0c:ee` mapping in its DHCP static lease map (`cmd/gvproxy/config.go:22-23, 372`); those defaults apply in the CLI mode that gvforwarder spawns gvproxy in (no `-config` file). Changing the subnet at our orchestrator level would silently leave `host.containers.internal` pointing outside the new subnet — a pretend-knob, not a real one. Hardcoded constants in `internal/config` reflect this constraint honestly. Upstream wsl-vpnkit exposed the IPs as env vars but those overrides were equally pretend; we drop them.
-- Other runtime knobs (WSL2 NAT gateway IP override, tap name and MAC, gvproxy/gvforwarder paths, healthcheck targets, debug flag) come from env vars consumed by the systemd unit (`Environment=`).
+- Other runtime knobs (WSL2 NAT gateway IP override, tap name and MAC, gvproxy/gvforwarder paths, healthcheck targets, debug flag) come from env vars inherited from the WSL bootstrap environment (set in `/etc/wsl.conf` via `[boot] command=`; no systemd `Environment=` directive).
 - Every env value is validated against a strict regex before use. No env value is concatenated into a syscall arg or passed to a child unmodified.
 - A `--print-config` flag dumps the resolved configuration for debugging.
 
@@ -286,9 +285,7 @@ wsl-vpnfix/
 │   └── healthcheck/                     ← optional connectivity probes
 ├── build/
 │   ├── upstream-pins.yaml               ← gvisor-tap-vsock tag + sha256s
-│   ├── Dockerfile.builder               ← reproducible Go build stage
-│   ├── Dockerfile.rootfs                ← Alpine pinned by digest, final rootfs
-│   ├── rootfs/                          ← wsl.conf, wsl-vpnfix.service, etc.
+│   ├── Dockerfile.rootfs                ← three-stage: Go builder, upstream fetcher (SHA-verified), final Alpine assembly
 │   └── pack.sh                          ← deterministic tar assembly
 ├── .github/
 │   └── workflows/
