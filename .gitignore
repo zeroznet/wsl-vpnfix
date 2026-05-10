@@ -13,3 +13,7 @@
 .idea/
 .DS_Store
 *.swp
+
+# Claude Code local settings (per-developer permission allowlist; never committed)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
