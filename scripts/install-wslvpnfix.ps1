@@ -132,16 +132,9 @@ function Start-Hidden {
     Start-Process -FilePath $LaunchExe -ArgumentList $LaunchArgs -WindowStyle Hidden | Out-Null
 }
 
-# Idempotency: a prior install may have left an auto-start artifact behind.
-# Wipe both possible legacy paths (Task Scheduler entry and the v1 .vbs in
-# shell:startup) before deciding what this run installs. Without this, the
-# -NoAutoStart flag silently does nothing on re-install — the previous
-# entry keeps firing at every logon.
-$LegacyVbs = Join-Path ([Environment]::GetFolderPath('Startup')) 'wsl-vpnfix.vbs'
-if (Test-Path -Path $LegacyVbs) {
-    Write-Step "Removing legacy launcher: $LegacyVbs"
-    Remove-Item -Force -Path $LegacyVbs
-}
+# Idempotency: re-install over an existing default install must wipe the
+# previous Task Scheduler entry first, otherwise -NoAutoStart silently
+# no-ops (the existing entry keeps firing at every logon).
 if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
     Write-Step "Removing previous Task Scheduler entry '$TaskName'"
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
