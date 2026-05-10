@@ -190,7 +190,7 @@ This is deliberately a small tool. It does not, and will not:
 - decrypt, intercept, or proxy VPN traffic
 - need or request Windows admin rights
 - modify Windows-side routing, firewall, or DNS resolver
-- run a Windows service, persistent background agent, or anything that consumes Windows resources past the one-second logon kick
+- install a Windows service, or require elevation at install or runtime — the per-user logon task and `wsl-gvproxy.exe` both run as the current user, no admin
 - ship Ubuntu or Fedora variants — Alpine is the only base
 - ship anything but a single static Go binary as the runtime
 - shell out to `iptables`, `nft`, `ip`, `wsl.exe`, or `cmd.exe`
