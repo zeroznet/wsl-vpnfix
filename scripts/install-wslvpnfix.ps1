@@ -4,8 +4,13 @@
 #
 # Resolves the requested release tag from GitHub, downloads the rootfs
 # tarball plus SHA256SUMS, verifies the tarball's SHA-256 against the
-# manifest, and imports it as a WSL 2 distro. Designed to run from a
-# `iwr ... | iex` one-liner; also runs cleanly from a saved file.
+# manifest, and imports it as a WSL 2 distro. Then starts the appliance
+# silently (no visible console window) and drops a small .vbs launcher
+# into the per-user Windows shell:startup folder so the appliance boots
+# again automatically at every Windows logon.
+#
+# Designed to run from a `iwr ... | iex` one-liner; also runs cleanly
+# from a saved file.
 #
 # Requires: PowerShell 5.1+ (Windows 10 22H2 ships 5.1, Windows 11 ships
 # 7.x via the Store), `wsl.exe` on PATH, network access to github.com.
@@ -16,7 +21,8 @@ param(
     [string]$Tag = 'latest',
     [string]$DistroName = 'wsl-vpnfix',
     [string]$InstallDir = "$env:LOCALAPPDATA\wsl-vpnfix",
-    [switch]$Force
+    [switch]$Force,
+    [switch]$NoAutoStart
 )
 
 $ErrorActionPreference = 'Stop'
@@ -110,12 +116,56 @@ try {
     Remove-Item -Recurse -Force -Path $Tmp -ErrorAction SilentlyContinue
 }
 
+# Silent launcher: WScript.Shell.Run with bWindowStyle=0 hides the wsl.exe
+# console entirely. --exec /bin/true triggers WSL to boot the distro (which
+# fires the [boot] command -> /sbin/wsl-vpnfix orchestrator as a child of
+# /init), runs /bin/true, and exits. The orchestrator keeps running, so
+# the distro stays in 'Running' state and the WSL VM stays alive.
+$StartupDir = [Environment]::GetFolderPath('Startup')
+$VbsPath = Join-Path $StartupDir 'wsl-vpnfix.vbs'
+
+if ($NoAutoStart) {
+    Write-Warn "Auto-start skipped (-NoAutoStart). Start it on demand with:"
+    Write-Host "  Start-Process wscript.exe -ArgumentList ""<vbs>""  # hidden, no root window"
+    Write-Host "  wsl -d $DistroName --exec /bin/true                # equivalent, brief flash"
+} else {
+    Write-Step "Configuring silent auto-start at every Windows logon"
+    $VbsContent = @"
+' wsl-vpnfix silent launcher — created by install-wslvpnfix.ps1.
+' Delete this file to disable auto-start at logon.
+CreateObject("WScript.Shell").Run "wsl -d $DistroName --exec /bin/true", 0, False
+"@
+    Set-Content -Path $VbsPath -Value $VbsContent -Encoding ASCII
+    Write-Ok "launcher: $VbsPath"
+
+    Write-Step 'Starting wsl-vpnfix in the background (no visible window)'
+    & wscript.exe $VbsPath
+    Start-Sleep -Seconds 3
+
+    $running = (& wsl.exe --list --running --quiet) 2>$null |
+        ForEach-Object { ($_ -replace "`0", '').Trim() } |
+        Where-Object { $_ -eq $DistroName }
+    if ($running) {
+        Write-Ok "$DistroName is Running"
+    } else {
+        Write-Warn "$DistroName not yet showing as Running — give it a few seconds and check 'wsl -l -v'"
+    }
+}
+
 Write-Host ''
 Write-Host 'Installed.' -ForegroundColor Green
+if (-not $NoAutoStart) {
+    Write-Host 'wsl-vpnfix is running and will start automatically at every logon.' -ForegroundColor Green
+}
 Write-Host ''
-Write-Host 'Next:' -ForegroundColor Cyan
-Write-Host "  wsl -d $DistroName            # start the appliance (keep window open)"
-Write-Host "  wsl -d Ubuntu -- curl -sI https://1.1.1.1   # validate from a sibling distro"
+Write-Host 'Optional — verify from a sibling distro:' -ForegroundColor Cyan
+Write-Host "  wsl -d Ubuntu -- curl -sI https://1.1.1.1   # expect HTTP/2 200"
 Write-Host ''
-Write-Host "Uninstall:  wsl --unregister $DistroName"
+Write-Host 'Uninstall:'
+if (-not $NoAutoStart) {
+    Write-Host "  Remove-Item ""$VbsPath"""
+}
+Write-Host "  wsl --terminate $DistroName"
+Write-Host "  wsl --unregister $DistroName"
+Write-Host "  Remove-Item -Recurse ""$InstallDir"""
 Write-Host ''
