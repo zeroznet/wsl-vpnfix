@@ -114,7 +114,7 @@ grep -rn "2026-05-09-wsl-vpnfix-phase-b-design" --include="*.md" --include="*.js
 
 Known reference sites that need updating in the same PR:
 
-- `wsl-vpnfix/CLAUDE.md` bootstrap-order line for the addendum and the addendum-overrides-master-spec sentence.
+- `CLAUDE.md` bootstrap-order line for the addendum and the addendum-overrides-master-spec sentence.
 - `TODO.md` Later bullet "Master spec rebase (post-Phase-B cleanup)" — removed (folded into Phase C and now done).
 
 The sweep also looks for any other reference patterns — `Phase B addendum`, `phase-b-design`, etc. — to catch indirect mentions.
@@ -132,7 +132,7 @@ In `TODO.md`:
   - "Master spec rebase (post-Phase-B cleanup)" Backlog bullet — done as part of Phase C.
   - The Phase C kickoff bullet itself, after this spec lands and writing-plans takes over.
 
-In `wsl-vpnfix/CLAUDE.md`:
+In `CLAUDE.md`:
 
 - Bootstrap order line referencing the Phase B addendum is dropped after the addendum is deleted in Artifact 3.
 - The Status section is updated to reflect Phase C completion once the `v0.2.0` tag lands. This update is the last commit of Phase C, not part of the spec write itself.
@@ -169,7 +169,7 @@ In `wsl-vpnfix/CLAUDE.md`:
 - Master spec is internally consistent: no addendum overrides, all section 4 edits applied in place, section 8 reflects current state only, section 3 is a pointer.
 - `docs/superpowers/specs/2026-05-09-wsl-vpnfix-phase-b-design.md` deleted; repo-wide grep returns no references.
 - `TODO.md` Backlog has explicit bullets for default-route persistence and `wsl-vpnfixctl`; the "master spec rebase" bullet is gone; the Phase C kickoff bullet is gone.
-- `wsl-vpnfix/CLAUDE.md` bootstrap order no longer references the deleted addendum.
+- `CLAUDE.md` bootstrap order no longer references the deleted addendum.
 - `v0.2.0` tagged on `main`; GitHub Release has tarball, `SHA256SUMS`, `upstream-pins.yaml`.
 
 ---
