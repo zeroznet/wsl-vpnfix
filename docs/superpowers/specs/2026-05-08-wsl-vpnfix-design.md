@@ -6,7 +6,7 @@
 **Status:** Living spec, last rebased 2026-05-10 against Phase B addendum and Phase C decisions.
 **Author:** Robert Bopko, with Claude Opus 4.7 assistance
 
-A from-scratch rebuild of [`sakai135/wsl-vpnkit`](https://github.com/sakai135/wsl-vpnkit) (upstream dormant since 2023-04-04). Same problem class — bypass a Windows-side VPN that breaks WSL 2 networking — but built for 2026: minimal attack surface, single Go binary, signed reproducible releases, documented threat model.
+A from-scratch rebuild of [`sakai135/wsl-vpnkit`](https://github.com/sakai135/wsl-vpnkit) (upstream dormant since 2023-04-04). Same problem class — bypass a Windows-side VPN that breaks WSL 2 networking — but built for 2026: minimal attack surface, single Go binary, SHA-256-verified reproducible releases, documented threat model.
 
 ---
 
@@ -22,7 +22,7 @@ Anyone on Windows 11 with WSL 2 who:
 
 - has a VPN that mirrored mode can't satisfy,
 - can't switch the VPN client (policy or otherwise),
-- wants an auditable, signed, reproducibly-built tool instead of "download some random tarball from the internet".
+- wants an auditable, SHA-256-verified, reproducibly-built tool instead of "download some random tarball from the internet".
 
 ### 1.3 Anti-target users
 
