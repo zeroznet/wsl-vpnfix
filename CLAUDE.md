@@ -11,8 +11,10 @@ Before proposing any work or answering "what's next," read in this order:
 1. `TODO.md` — open work in priority order (Now / Later / Backlog buckets)
 2. `git log --oneline -20` — recent evolution
 3. `cmd/wsl-vpnfix/main.go` and `internal/*/` — the actual runtime, single source of truth on behavior
-4. `docs/superpowers/specs/2026-05-08-wsl-vpnfix-design.md` — frozen design contract; jump to the section relevant to whatever is being touched
-5. `docs/superpowers/plans/2026-05-08-wsl-vpnfix-phase-a-core-runtime.md` — frozen Phase A history. Corrections C-1..C-8 in the Self-Review section record what the original plan got wrong; useful when adjacent code is being changed.
+4. `docs/superpowers/specs/2026-05-08-wsl-vpnfix-design.md` — frozen master design contract; the Phase B addendum at `docs/superpowers/specs/2026-05-09-wsl-vpnfix-phase-b-design.md` overrides it where they conflict, until the master-spec rebase lands in Phase C
+5. `docs/superpowers/plans/2026-05-08-wsl-vpnfix-phase-a-core-runtime.md` — frozen Phase A history (Corrections C-1..C-8 in the Self-Review section)
+6. `docs/superpowers/plans/2026-05-09-wsl-vpnfix-phase-b-rootfs-and-release.md` — frozen Phase B history (rootfs, deterministic build, CI + release pipelines, Renovate, branch protection)
+7. `docs/smoke-2026-05-10.md` and `docs/smoke-2026-05-10-workpc-vpn.md` — production smoke evidence (gate results, MAC pinning, the F-007 reversal)
 
 Live files (TODO.md, code, current spec) win over frozen plans. Project memory at `~/.claude/projects/-home-zero-dev-wsl-vpnfix/memory/` is auto-loaded; `MEMORY.md` lives there as the index.
 
@@ -101,19 +103,22 @@ When the rebuild touches an external SDK or HTTP API, the workspace's `nanoconte
 
 ## Status
 
-**Phase A complete** as of 2026-05-09. Go orchestrator implemented per `docs/superpowers/plans/2026-05-08-wsl-vpnfix-phase-a-core-runtime.md`. All unit + integration tests green inside the dev container, race detector clean, `CGO_ENABLED=0` static binary builds bit-for-bit reproducibly. Open work and milestone gating live in `TODO.md`.
+**Phase A complete** as of 2026-05-09. Go orchestrator implemented per `docs/superpowers/plans/2026-05-08-wsl-vpnfix-phase-a-core-runtime.md`. All unit + integration tests green inside the dev container, race detector clean, `CGO_ENABLED=0` static binary builds bit-for-bit reproducibly.
 
-**Phase B not started.** Rootfs assembly + reproducible build pipeline. Phase B Task 1 = production tarball + end-to-end smoke gate (closes Phase A's deferred manual smoke step in one move). Plan does not exist yet — write at `docs/superpowers/plans/<YYYY-MM-DD>-wsl-vpnfix-phase-b-rootfs-and-release.md` after a brainstorming pass against the spec section 4.
+**Phase B complete** as of 2026-05-10. Rootfs + reproducible release pipeline + public surface shipped per `docs/superpowers/plans/2026-05-09-wsl-vpnfix-phase-b-rootfs-and-release.md` (Phase B addendum at `docs/superpowers/specs/2026-05-09-wsl-vpnfix-phase-b-design.md` is the authoritative override over master spec section 4 until the Phase C rebase). Public repo at `github.com/zeroznet/wsl-vpnfix`; `v0.1.0` released with deterministic tarball + `SHA256SUMS` + `upstream-pins.yaml`; GitHub Actions CI (gofmt / vet / mod-verify / govulncheck non-blocking / unit + integration / build verify / race) and release pipeline (tag-triggered `^vN.N.N$`, runs `build/pack.sh`, uploads to GH Release); Renovate config (gomod + alpine-and-go-apk lockstep + gvisor-tap-vsock); branch protection on `main` (`enforce_admins`, required `ci` status check with `strict`, conversation resolution, no force-push, no delete). Public surface: README in nanocontext style, BSD-2-Clause LICENSE, `scripts/install-wslvpnfix.ps1` (PowerShell installer with per-user Task Scheduler At-logon auto-start, no admin). Smoke evidence: `docs/smoke-2026-05-10.md` (home PC, no VPN — bridge correctness) and `docs/smoke-2026-05-10-workpc-vpn.md` (work PC, Cisco AnyConnect cycled — the actual VPN-bypass property proven).
 
-**Phase C not started.** README, LICENSE, `install-wslvpnfix.ps1`, `docs/SECURITY-AUDIT.md`, `docs/THREAT-MODEL.md`, `v1.0.0` tag.
+**Phase C not started.** Remaining: `docs/SECURITY-AUDIT.md` (back-port findings from Phase A plan corrections C-1..C-8 plus the four B3 follow-on commits documented in `docs/smoke-2026-05-10.md`; explicitly reverse spec section 3.5's example finding F-007 — production runs an unscoped `postrouting masquerade oifname "wsltap"` because sibling distros sit in `172.x.x.x` and the qualifier scope dropped their packets), `docs/THREAT-MODEL.md` derived from spec section 3, master-spec rebase folding the Phase B addendum into the master spec and archiving the addendum, `v1.0.0` tag. One CI follow-on tracked in TODO Backlog: re-enable strict `govulncheck` once alpine apk ships go 1.25.10 (currently 2 stdlib CVEs are flagged but non-blocking — low exposure for our threat model). Plan does not exist yet — write at `docs/superpowers/plans/<YYYY-MM-DD>-wsl-vpnfix-phase-c-audit-and-release.md` after a brainstorming pass.
 
 ## Repo layout
 
 ```
 wsl-vpnfix/
 ├── CLAUDE.md                                       ← this file
+├── README.md                                       ← public product page (nanocontext-style; centered logo, badges, TOC)
+├── LICENSE                                         ← BSD-2-Clause
 ├── TODO.md                                         ← open work tracker (read this before starting any session)
-├── go.mod, go.sum                                  ← module github.com/zeroznet/wsl-vpnfix, go 1.25.0
+├── renovate.json                                   ← 3 streams: gomod, alpine+go-apk lockstep, gvisor-tap-vsock release
+├── go.mod, go.sum                                  ← module github.com/zeroznet/wsl-vpnfix, go 1.25.9
 ├── cmd/wsl-vpnfix/                                 ← orchestrator main + buildEnv test
 ├── internal/
 │   ├── config/                                     ← Config struct, validators, env loader
@@ -122,10 +127,25 @@ wsl-vpnfix/
 │   ├── netlink/                                    ← tap, addr, route via vishvananda/netlink
 │   ├── process/                                    ← child-process manager (Setpgid, kill -pgid, WaitDelay 5s)
 │   └── wsl/                                        ← WSL2 NAT gateway IP autodetect from resolv.conf
+├── assets/
+│   └── logo.svg                                    ← README banner (terminal mockup, GitHub-dark palette)
+├── build/
+│   ├── Dockerfile.rootfs                           ← three-stage: Go builder, upstream fetcher (SHA-verified), final Alpine assembly
+│   ├── pack.sh                                     ← deterministic tarball producer (out/wsl-vpnfix-<version>.tar.gz; same commit -> same SHA)
+│   └── upstream-pins.yaml                          ← gvisor-tap-vsock release tag + SHA-256s for gvforwarder + gvproxy.exe
+├── scripts/
+│   └── install-wslvpnfix.ps1                       ← Windows-side PowerShell installer (download + SHA-verify + wsl --import + Task Scheduler At-logon)
 ├── dev/
 │   ├── Containerfile                               ← Alpine 3.23.4 (digest-pinned) + Go 1.25.9 dev image
 │   └── run.sh                                      ← podman wrapper with persistent caches; --integration adds NET_ADMIN+NET_RAW+/dev/net/tun
-└── docs/superpowers/{specs,plans}/...              ← design + phase plans (frozen-when-dated)
+├── .github/workflows/
+│   ├── ci.yml                                      ← gofmt, vet, mod-verify, govulncheck (non-blocking pending alpine apk go 1.25.10), unit + integration, build verify, race
+│   └── release.yml                                 ← tag-triggered (^vN.N.N$); runs build/pack.sh; uploads tarball + SHA256SUMS + upstream-pins.yaml to GH Release
+├── out/                                            ← gitignored; pack.sh write target
+└── docs/
+    ├── smoke-2026-05-10.md                         ← home-PC bridge correctness validation
+    ├── smoke-2026-05-10-workpc-vpn.md              ← work-PC + Cisco AnyConnect VPN-bypass validation
+    └── superpowers/{specs,plans}/...               ← design contracts + phase plans (frozen-when-dated)
 ```
 
 ## Common commands
