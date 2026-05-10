@@ -73,7 +73,7 @@ The Microsoft-supported workarounds (mirrored mode, DNS tunneling) only cover so
 5. nftables rewrites: WSL2 host gateway `→` host IP, DNS `→` gvproxy gateway, masquerade out the tap.
 6. Other WSL distros use the same WSL 2 VM kernel and inherit the route. Their traffic goes out through the .exe, which runs as a normal Windows process, which the VPN does not filter.
 
-The runtime is one static Go binary (`/sbin/wsl-vpnfix`) that talks to the kernel via netlink (no shelling out to `iptables`, `nft`, or `ip`), and one Windows .exe shipped alongside it. No daemon installer, no Windows service, no scheduled task required.
+The runtime is one static Go binary (`/sbin/wsl-vpnfix`) that talks to the kernel via netlink (no shelling out to `iptables`, `nft`, or `ip`), and one Windows .exe shipped alongside it. No daemon installer, no Windows service, no persistent Windows-side process — the optional auto-start at logon is a one-shot Task Scheduler entry that kicks the distro and exits in under a second.
 
 ## Install
 
@@ -180,7 +180,7 @@ wsl --unregister wsl-vpnfix
 Remove-Item -Recurse "$env:LOCALAPPDATA\wsl-vpnfix"
 ```
 
-Nothing else. No Windows service, no registry, no scheduled task, no leftover `%PROGRAMDATA%`. The `C:\Users\Public\.wsl-vpnfix\` staging directory holds the .exe and is removed by the orchestrator on graceful shutdown; if a crash leaves it behind, delete it by hand.
+Four lines, in order: drop the auto-start task, terminate the distro, drop the WSL registration, drop the rootfs. No Windows service, no registry hive, no leftover `%PROGRAMDATA%`. The `C:\Users\Public\.wsl-vpnfix\` staging directory holds the .exe and is removed by the orchestrator on graceful shutdown; if a crash leaves it behind, delete it by hand.
 
 ## What it isn't
 
@@ -190,7 +190,7 @@ This is deliberately a small tool. It does not, and will not:
 - decrypt, intercept, or proxy VPN traffic
 - need or request Windows admin rights
 - modify Windows-side routing, firewall, or DNS resolver
-- run a Windows service, scheduled task, or background agent
+- run a Windows service, persistent background agent, or anything that consumes Windows resources past the one-second logon kick
 - ship Ubuntu or Fedora variants — Alpine is the only base
 - ship anything but a single static Go binary as the runtime
 - shell out to `iptables`, `nft`, `ip`, `wsl.exe`, or `cmd.exe`
