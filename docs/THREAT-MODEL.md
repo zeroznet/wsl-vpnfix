@@ -38,7 +38,7 @@ Internet ── (VPN handles) ── Windows host
         wsl-vpnfix distro ─── sibling ──── user's primary distro
                 │
                 │ (d) build → install boundary             ← AUDIT
-                │     ├── signed releases (cosign)         │   release
+                │     ├── SHA256SUMS over release artifacts │   release
                 │     ├── reproducible build               │   pipeline
                 │     └── verified upstream pins           │
                 ▼
@@ -71,7 +71,7 @@ Internet ── (VPN handles) ── Windows host
 
 - Alpine base image pinned by digest. Package list audited — only what runtime requires (no `bash`, no `curl`, no `wget`, no compilers, no SSH).
 - `wsl.conf`: interop enabled (we need it), `appendWindowsPath=false`, `automount.options="metadata,umask=22,fmask=11"`, `default=root`, orchestrator launched at boot via `[boot] command=/sbin/wsl-vpnfix` as a child of WSL's own `/init`.
-- Orchestrator owns its own privilege model (root for the appliance lifetime, no drop), reaps zombies on `SIGCHLD`, forwards `SIGINT` / `SIGTERM` / `SIGHUP` into the existing ordered teardown stack. No setuid binaries beyond what Alpine's `busybox-suid` ships and we add nothing extra.
+- Orchestrator owns its own privilege model (root for the appliance lifetime, no drop), reaps zombies on `SIGCHLD`, forwards `SIGINT` / `SIGTERM` / `SIGHUP` into the existing ordered teardown stack.
 - File modes: orchestrator and pinned binaries `0755 root:root`; checksums file `0644 root:root`.
 - No setuid binaries beyond what Alpine ships and we actually need (audit `find / -perm -4000`).
 
