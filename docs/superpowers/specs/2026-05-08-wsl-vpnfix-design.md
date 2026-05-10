@@ -3,10 +3,10 @@
 # wsl-vpnfix — Design
 
 **Date:** 2026-05-08
-**Status:** Draft, pending user review
+**Status:** Living spec, last rebased 2026-05-10 against Phase B addendum and Phase C decisions.
 **Author:** Robert Bopko, with Claude Opus 4.7 assistance
 
-A from-scratch rebuild of [`sakai135/wsl-vpnkit`](https://github.com/sakai135/wsl-vpnkit) (upstream dormant since 2023-04-04). Same problem class — bypass a Windows-side VPN that breaks WSL 2 networking — but built for 2026: minimal attack surface, single Go binary, signed reproducible releases, documented threat model.
+A from-scratch rebuild of [`sakai135/wsl-vpnkit`](https://github.com/sakai135/wsl-vpnkit) (upstream dormant since 2023-04-04). Same problem class — bypass a Windows-side VPN that breaks WSL 2 networking — but built for 2026: minimal attack surface, single Go binary, SHA-256-verified reproducible releases, documented threat model.
 
 ---
 
@@ -22,7 +22,7 @@ Anyone on Windows 11 with WSL 2 who:
 
 - has a VPN that mirrored mode can't satisfy,
 - can't switch the VPN client (policy or otherwise),
-- wants an auditable, signed, reproducibly-built tool instead of "download some random tarball from the internet".
+- wants an auditable, SHA-256-verified, reproducibly-built tool instead of "download some random tarball from the internet".
 
 ### 1.3 Anti-target users
 
@@ -90,16 +90,15 @@ WSL 2 (default NAT mode) hosts every imported distro inside one Linux VM with a 
 
 | Component | Where | Owner | Pinned? |
 |---|---|---|---|
-| `wsl-vpnfix` Go orchestrator | Linux side, in our distro, run by systemd | us | source-in-repo |
+| `wsl-vpnfix` Go orchestrator | Linux side, in our distro, launched at boot via `wsl.conf` `[boot] command=` as a child of WSL's `/init` (no systemd) | us | source-in-repo |
 | `wsl-gvforwarder` | Linux side, child of orchestrator | upstream `containers/gvisor-tap-vsock` | yes (SHA-256) |
 | `wsl-gvproxy.exe` | Windows side, child of orchestrator (WSL interop) | upstream `containers/gvisor-tap-vsock` (`gvproxy-windowsgui.exe`) | yes (SHA-256) |
 | Alpine rootfs | Linux side, the distro we ship | us, base from Alpine | base image pinned by digest |
-| `wsl-vpnfix.service` | Linux side, baked into rootfs | us | source-in-repo |
 | `wsl.conf` | Linux side, baked into rootfs | us | source-in-repo |
 
 ### 2.4 Lifecycle
 
-1. **Boot:** WSL launches the distro. systemd starts `wsl-vpnfix.service`.
+1. **Boot:** WSL launches the distro. WSL's `/init` reads `/etc/wsl.conf` and execs `/sbin/wsl-vpnfix` per the `[boot] command=` directive (no systemd, no PID 1).
 2. **Init:** orchestrator reads env vars; validates every IP / MAC / path against strict regex; refuses to start on any malformed input.
 3. **Spawn gvproxy on Windows:** orchestrator launches `wsl-gvproxy.exe` via WSL interop with stdio plumbed to a pipe pair owned by the orchestrator.
 4. **Spawn gvforwarder on Linux:** with the same stdio pair, gvforwarder opens `/dev/net/tun`, configures `wsltap`, starts the frame copy loop.
@@ -111,24 +110,27 @@ WSL 2 (default NAT mode) hosts every imported distro inside one Linux VM with a 
 ### 2.5 Configuration
 
 - The IP plan (`192.168.127.0/24`, gateway `.1`, host `.254`, local `.2`) is **compile-time fixed**, not env-overridable. gvproxy v0.8.8 hardcodes the host IP (`.254`) in its DNS records for `host.containers.internal` and the `.2:5a:94:ef:e4:0c:ee` mapping in its DHCP static lease map (`cmd/gvproxy/config.go:22-23, 372`); those defaults apply in the CLI mode that gvforwarder spawns gvproxy in (no `-config` file). Changing the subnet at our orchestrator level would silently leave `host.containers.internal` pointing outside the new subnet — a pretend-knob, not a real one. Hardcoded constants in `internal/config` reflect this constraint honestly. Upstream wsl-vpnkit exposed the IPs as env vars but those overrides were equally pretend; we drop them.
-- Other runtime knobs (WSL2 NAT gateway IP override, tap name and MAC, gvproxy/gvforwarder paths, healthcheck targets, debug flag) come from env vars consumed by the systemd unit (`Environment=`).
+- Other runtime knobs (WSL2 NAT gateway IP override, tap name and MAC, gvproxy/gvforwarder paths, healthcheck targets, debug flag) come from env vars inherited from the WSL bootstrap environment (set in `/etc/wsl.conf` via `[boot] command=`; no systemd `Environment=` directive).
 - Every env value is validated against a strict regex before use. No env value is concatenated into a syscall arg or passed to a child unmodified.
 - A `--print-config` flag dumps the resolved configuration for debugging.
 
 ### 2.6 Rootfs contents
+
+The orchestrator is launched at distro boot via `wsl.conf` `[boot] command=/sbin/wsl-vpnfix`, running as a child of WSL's own `/init` (not as PID 1). The `systemd=true` path was tested on 2026-05-09 and broke WSL interop's stdio bridge to gvproxy.exe due to systemd-style integration assumptions WSL makes that we cannot satisfy without shipping systemd; `command=` avoids that entirely. A `/sbin/init` symlink stays in the rootfs as defensive cover; it no-ops at runtime because `os.Getpid() != 1`.
 
 ```
 /sbin/wsl-vpnfix              ← our Go binary (orchestrator)
 /sbin/wsl-gvforwarder         ← pinned upstream Linux binary
 /etc/wsl-vpnfix/wsl-gvproxy.exe
                               ← pinned upstream Windows binary, shipped here;
-                                copied at boot to a path WSL interop can launch
-/etc/wsl.conf                 ← interop on, automount opts hardened, systemd on
-/etc/systemd/system/wsl-vpnfix.service
+                                staged at boot to Windows NTFS before launch
 /etc/wsl-vpnfix/checksums     ← SHA-256 of bundled binaries, verified at boot
+/etc/wsl.conf                 ← [boot] command=/sbin/wsl-vpnfix; interop on; automount hardened; no systemd
+/sbin/init                    ← symlink to /sbin/wsl-vpnfix (defensive cover, unused at runtime)
+LICENSE
 ```
 
-(Exact paths may shift slightly during plan; this is the intent.)
+Plus busybox, Alpine baselayout, `nftables`, `iproute2`, `ca-certificates`. No `bash`, no `curl`, no `wget`, no compilers, no SSH.
 
 ---
 
@@ -205,15 +207,11 @@ We also do not vendor Go modules. `go.sum` + `sum.golang.org` (Go's transparency
 4. **Pack** as `wsl-vpnfix-<version>.tar.gz` ready for `wsl --import`.
 
 5. **Generate metadata:**
-   - `SHA256SUMS` for the tarball and every shipped binary.
-   - SBOM via `syft packages dir:./rootfs -o cyclonedx-json` → `wsl-vpnfix-<version>.cdx.json`.
-   - Build provenance via SLSA-style attestation.
+   - `SHA256SUMS` for the tarball and `upstream-pins.yaml`.
 
 ### 4.3 Reproducibility
 
-The build is reproducible if a clean rebuild from the same git tag, same Go toolchain version, same pinned Alpine digest, and same upstream pins yields a `wsl-vpnfix-<version>.tar.gz` with an identical SHA-256.
-
-CI enforces this with a `reproducibility.yml` workflow that runs the full build twice on independent runners and fails the release on any diff.
+The build is reproducible if a clean rebuild from the same git tag, same Go toolchain version, same pinned Alpine digest, and same upstream pins yields a `wsl-vpnfix-<version>.tar.gz` with an identical SHA-256. Reproducibility is an internal quality property of `build/pack.sh`, not a separate CI attestation.
 
 Bit-exact tarball reproducibility requires:
 
@@ -222,74 +220,53 @@ Bit-exact tarball reproducibility requires:
 - Frozen owner / mode (set explicitly, not from filesystem).
 - Deterministic gzip (`gzip -n`).
 
-### 4.4 Signing
+### 4.4 CI / CD
 
-Keyless signing via Sigstore / cosign + GitHub OIDC:
-
-```
-cosign sign-blob --yes \
-  --output-signature wsl-vpnfix-<version>.tar.gz.sig \
-  --output-certificate wsl-vpnfix-<version>.tar.gz.pem \
-  wsl-vpnfix-<version>.tar.gz
-```
-
-No long-lived signing keys. Signatures verify against the GitHub Actions OIDC identity (`repo:zeroznet/wsl-vpnfix:ref:refs/tags/v…`) using `cosign verify-blob`.
-
-### 4.5 CI / CD
-
-GitHub Actions (free for public repos, standard runners). Rules:
+GitHub Actions (free for public repos, standard runners on `ubuntu-24.04`). Rules:
 
 - Every action pinned by commit SHA, not tag.
 - Per-job `permissions:` blocks; default `read-all`; write only where strictly needed.
-- `id-token: write` only on the release job.
+- `release.yml` upload job uses `permissions: { contents: write }` only; no OIDC token needed.
 - Forked-PR workflows do not have access to release secrets (default GitHub behavior; not overridden).
-- Renovate (or Dependabot) configured to PR `upstream-pins.yaml` bumps with the new sha256sums staged ready to verify.
+- Renovate (`renovate.json` at repo root) with three customManager-driven streams: Go modules, Alpine + Go apk lockstep, `gvisor-tap-vsock` release. Weekly schedule, no auto-merge.
 
 Workflows:
 
 ```
 .github/workflows/
-├── ci.yml                 # PR: gofmt, go vet, go mod verify, govulncheck, unit + integration tests, build verify
-├── release.yml            # tag-triggered: reproducible build, sign, SBOM, upload
-└── reproducibility.yml    # tag + nightly: rebuild + diff
+├── ci.yml       # PR: gofmt -l ., go vet ./... + go vet -tags=integration ./..., go mod verify, govulncheck ./..., unit + integration tests, build verify
+└── release.yml  # tag-triggered (^vN.N.N$): runs build/pack.sh, uploads tarball + SHA256SUMS + upstream-pins.yaml to GH Release
 ```
 
-`go mod verify` runs before any compilation and aborts the job if any cached module's content doesn't match the hash in `go.sum`. `govulncheck ./...` runs against the resolved module graph and fails the job on any known CVE in a dep we actually call. Together these substitute for vendoring (see 4.1 pinning policy).
+`go mod verify` runs before any compilation and aborts the job if any cached module's content doesn't match the hash in `go.sum`. `govulncheck ./...` runs against the resolved module graph; currently non-blocking pending alpine apk shipping Go 1.25.10 (tracked in `TODO.md` Backlog). Together these substitute for vendoring (see 4.1 pinning policy).
 
-### 4.6 Release artifacts
+### 4.5 Release artifacts
 
 ```
-wsl-vpnfix-<version>.tar.gz       ← the importable WSL distro
-wsl-vpnfix-<version>.tar.gz.sig   ← cosign signature
-wsl-vpnfix-<version>.tar.gz.pem   ← cosign certificate
-wsl-vpnfix-<version>.cdx.json     ← CycloneDX SBOM
-SHA256SUMS                         ← sha256 of every artifact above
-SHA256SUMS.sig                     ← cosign signature of SHA256SUMS
-upstream-pins.yaml                 ← what gvisor-tap-vsock version we shipped
+wsl-vpnfix-<version>.tar.gz   ← the importable WSL distro
+SHA256SUMS                     ← sha256 of the tarball and upstream-pins.yaml
+upstream-pins.yaml             ← what gvisor-tap-vsock version we shipped
 ```
 
-### 4.7 Versioning
+### 4.6 Versioning
 
-- SemVer from `v1.0.0`. `v0.x` while the audit doc is still being written; `v1.0.0` ships only after the initial audit lands.
-- Bump policy:
-  - **patch:** bug fix, security fix in our code, upstream pin bump.
-  - **minor:** new env var, new opt-in feature, Alpine major bump.
-  - **major:** breaking config change, dropping `wsl --import` compatibility, anything that changes user-observable behavior.
+SemVer applies. The project currently sits on the 0.x line; no API or behavior stability commitment yet. There is no v1.0 audit gate. Phase A shipped v0.1.0; Phase C closes with v0.2.0.
 
-### 4.8 User update workflow
+Bump policy:
+
+- **patch:** bug fix, security fix in our code, upstream pin bump.
+- **minor:** new env var, new opt-in feature, Alpine major bump, documentation milestone (e.g. audit doc landing).
+- **major:** breaking config change, dropping `wsl --import` compatibility, anything that changes user-observable behavior.
+
+### 4.7 User update workflow
 
 ```
 wsl --unregister wsl-vpnfix
-cosign verify-blob \
-  --certificate wsl-vpnfix-1.2.3.tar.gz.pem \
-  --signature   wsl-vpnfix-1.2.3.tar.gz.sig \
-  --certificate-identity-regexp "^https://github.com/zeroznet/wsl-vpnfix/" \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  wsl-vpnfix-1.2.3.tar.gz
+sha256sum -c SHA256SUMS
 wsl --import wsl-vpnfix $env:USERPROFILE\wsl-vpnfix wsl-vpnfix-1.2.3.tar.gz
 ```
 
-A PowerShell helper (`scripts/install-wslvpnfix.ps1`) wraps the verify + import in one shot. Verify is non-optional in the docs.
+A PowerShell helper (`scripts/install-wslvpnfix.ps1`) wraps the SHA-256 verify + import in one shot. The equivalent PowerShell check uses `Get-FileHash`. Verify is non-optional in the docs.
 
 ---
 
@@ -308,21 +285,18 @@ wsl-vpnfix/
 │   └── healthcheck/                     ← optional connectivity probes
 ├── build/
 │   ├── upstream-pins.yaml               ← gvisor-tap-vsock tag + sha256s
-│   ├── Dockerfile.builder               ← reproducible Go build stage
-│   ├── Dockerfile.rootfs                ← Alpine pinned by digest, final rootfs
-│   ├── rootfs/                          ← wsl.conf, wsl-vpnfix.service, etc.
+│   ├── Dockerfile.rootfs                ← three-stage: Go builder, upstream fetcher (SHA-verified), final Alpine assembly
 │   └── pack.sh                          ← deterministic tar assembly
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml                       ← lint + test + build verify on PR
-│       ├── release.yml                  ← tag-triggered, cosign-signed
-│       └── reproducibility.yml          ← second-build diff job
+│       └── release.yml                  ← tag-triggered, uploads tarball + SHA256SUMS + upstream-pins.yaml
 ├── docs/
 │   ├── SECURITY-AUDIT.md                ← findings + status, lives long-term
 │   ├── THREAT-MODEL.md                  ← derived from #3, frozen reference
 │   └── superpowers/specs/               ← design docs (this file)
 ├── scripts/
-│   └── install-wslvpnfix.ps1            ← cosign verify + wsl --import helper
+│   └── install-wslvpnfix.ps1            ← SHA-256 verify + wsl --import helper
 ├── CLAUDE.md
 ├── CONTRIBUTING.md
 ├── LICENSE                               ← BSD-2-Clause
@@ -349,20 +323,20 @@ Layout notes:
 | Base image | Alpine, pinned by digest |
 | Distribution model | Distro-only (sibling appliance distro, `wsl --import`) |
 | Runtime | Go orchestrator + pinned upstream `gvforwarder` + pinned upstream `gvproxy-windowsgui.exe` |
-| Architectures | amd64 only at v1.0; ARM deferred |
+| Architectures | amd64 only; ARM deferred |
 | Network rules | nftables via netlink-typed Go library |
 | IP plan / subnet | Compile-time fixed at `192.168.127.0/24` (gvproxy v0.8.8 hardcodes parts of it; runtime override would only pretend to work) |
 | CI | GitHub Actions (free for public repos) |
-| Signing | Sigstore / cosign keyless via GitHub OIDC |
-| SBOM | syft, CycloneDX JSON |
-| Reproducibility | `-trimpath`, `-buildid=`, frozen mtime, deterministic gzip, second-build diff in CI |
+| Signing | None; `SHA256SUMS` over GitHub TLS + tag immutability matches the audience's actual trust model |
+| Dep inventory | None as a separate artifact; `go.sum` + `apk info -L` inside the rootfs cover the dep inventory — a separate file is duplicated state |
+| Reproducibility | `-trimpath`, `-buildid=`, frozen mtime, deterministic gzip; internal build quality property, not a CI attestation |
 | License | BSD-2-Clause |
 | Default distro user | `root` (appliance, no human login) |
 | PowerShell helper | `install-wslvpnfix.ps1` (fully lowercase per user request) |
 | Microsoft Store distro registration | Deferred to v2 |
 | Claude Code plugin | No; this is a system appliance, not a Claude tool |
 | Logo / branding | Deferred (do not gate v1 on art) |
-| Versioning | SemVer; v0.x during audit, v1.0.0 after initial audit lands |
+| Versioning | SemVer; currently 0.x line, no v1.0 audit gate; Phase C closes with v0.2.0 |
 
 ---
 
@@ -380,17 +354,9 @@ Layout notes:
 
 ---
 
-## 8. Open items (resolve in plan or first PRs)
+## 8. Open items
 
-- Exact pinned Go toolchain version at v1.0 cut.
-- Exact pinned Alpine digest at v1.0 cut.
-- Exact pinned `gvisor-tap-vsock` release tag at v1.0 cut.
-- Final choice between `vishvananda/netlink` and the newer `mdlayher/netlink` family for our netlink layer (decide during plan after a small spike).
-- Final choice of nftables Go library (`google/nftables` vs hand-rolled netlink expressions).
-- Whether the orchestrator runs as PID 1 directly or under systemd. Default position: under systemd because we want the unit hardening, but the trade-off (extra ~10 MB, more moving parts) gets a final look in the plan.
-- Whether to ship a tiny `wsl-vpnfixctl` debug subcommand (`status`, `dump-config`, `verify-pins`) inside the same binary, or as a separate flag set on the same binary.
-- Default-route capture is the only non-idempotent recovery step in init: we delete the existing WSL2 default and stash the original in RAM before installing our tap default. If the orchestrator dies between the delete and the install, restart cannot recover the original route — `CaptureAndDelDefaultRoutes` finds nothing to capture. Decide before v1.0 whether to persist the captured route(s) to disk (e.g. `/run/wsl-vpnfix/saved-routes.json`) for crash-safe recovery, or accept that a `systemctl restart wsl-vpnfix` mid-init may require a `wsl --shutdown` to recover networking in the primary distro.
-- Partial-init teardown is verified only by Task 14's manual smoke test in Phase A. Phase decomposition in `cmd/wsl-vpnfix/main.go` makes per-phase failure paths visible, but no automated test forces a mid-init failure at each phase boundary and asserts kernel state cleanliness (tap gone, no nft table, original default routes restored). Before v1.0, add fault-injection integration tests — either by mocking the netlink/netfilter packages (requires interface indirection at the orchestrator boundary) or by forcing real failures from a privileged test harness (e.g. pre-create a conflicting tap to make `CreateTap` fail, then assert teardown reverses the prior phase's state).
+All original open items are resolved during Phase A (netlink library and nftables library choices, `wsl-vpnfixctl` folded into the same binary as flags then redistributed to TODO Backlog in Phase C), Phase B (Go toolchain pin, Alpine digest pin, `gvisor-tap-vsock` release tag pin, PID 1 vs systemd resolved as `[boot] command=` under WSL `/init`), or Phase C (default-route persistence redistributed to TODO Backlog, fault-injection integration tests dropped). `TODO.md` is the canonical home for any future open work; this section is intentionally short to avoid duplicating state.
 
 ---
 
