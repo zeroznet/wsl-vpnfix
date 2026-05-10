@@ -4,8 +4,14 @@
 #
 # Resolves the requested release tag from GitHub, downloads the rootfs
 # tarball plus SHA256SUMS, verifies the tarball's SHA-256 against the
-# manifest, and imports it as a WSL 2 distro. Designed to run from a
-# `iwr ... | iex` one-liner; also runs cleanly from a saved file.
+# manifest, and imports it as a WSL 2 distro. Then registers a per-user
+# Task Scheduler entry that starts the appliance silently at every Windows
+# logon — native Windows mechanism, no scripts in shell:startup, auditable
+# in `taskschd.msc`. Also kicks the appliance up immediately so you do not
+# have to log out / in.
+#
+# Designed to run from a `iwr ... | iex` one-liner; also runs cleanly
+# from a saved file.
 #
 # Requires: PowerShell 5.1+ (Windows 10 22H2 ships 5.1, Windows 11 ships
 # 7.x via the Store), `wsl.exe` on PATH, network access to github.com.
@@ -16,7 +22,8 @@ param(
     [string]$Tag = 'latest',
     [string]$DistroName = 'wsl-vpnfix',
     [string]$InstallDir = "$env:LOCALAPPDATA\wsl-vpnfix",
-    [switch]$Force
+    [switch]$Force,
+    [switch]$NoAutoStart
 )
 
 $ErrorActionPreference = 'Stop'
@@ -110,12 +117,71 @@ try {
     Remove-Item -Recurse -Force -Path $Tmp -ErrorAction SilentlyContinue
 }
 
+# Hidden launcher: powershell.exe with -WindowStyle Hidden creates no
+# console; the wsl.exe child it spawns inherits that state, so no window
+# appears at any point. --exec /bin/true triggers WSL to boot the distro
+# (which fires the [boot] command -> /sbin/wsl-vpnfix orchestrator as a
+# child of /init), runs the no-op, and exits. The orchestrator keeps
+# running, so the distro stays in 'Running' state and the WSL VM stays
+# alive.
+$TaskName = 'wsl-vpnfix'
+$LaunchExe = 'powershell.exe'
+$LaunchArgs = "-WindowStyle Hidden -NoProfile -Command `"& wsl.exe -d $DistroName --exec /bin/true`""
+
+function Start-Hidden {
+    Start-Process -FilePath $LaunchExe -ArgumentList $LaunchArgs -WindowStyle Hidden | Out-Null
+}
+
+# Idempotency: re-install over an existing default install must wipe the
+# previous Task Scheduler entry first, otherwise -NoAutoStart silently
+# no-ops (the existing entry keeps firing at every logon).
+if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
+    Write-Step "Removing previous Task Scheduler entry '$TaskName'"
+    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+}
+
+if ($NoAutoStart) {
+    Write-Warn 'Auto-start at logon skipped (-NoAutoStart).'
+    Write-Step 'Starting the appliance once now (background, hidden)'
+    Start-Hidden
+} else {
+    Write-Step "Registering Task Scheduler entry '$TaskName' (At logon, hidden, no admin)"
+    $UserId = if ($env:USERDOMAIN) { "$env:USERDOMAIN\$env:USERNAME" } else { $env:USERNAME }
+    $action = New-ScheduledTaskAction -Execute $LaunchExe -Argument $LaunchArgs
+    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $UserId
+    $settings = New-ScheduledTaskSettingsSet -Hidden -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 2)
+    $principal = New-ScheduledTaskPrincipal -UserId $UserId -LogonType Interactive -RunLevel Limited
+    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
+    Write-Ok "task registered (audit: taskschd.msc, or schtasks /query /tn $TaskName /v)"
+
+    Write-Step "Triggering initial run via the task"
+    Start-ScheduledTask -TaskName $TaskName
+}
+
+Start-Sleep -Seconds 3
+$running = (& wsl.exe --list --running --quiet) 2>$null |
+    ForEach-Object { ($_ -replace "`0", '').Trim() } |
+    Where-Object { $_ -eq $DistroName }
+if ($running) {
+    Write-Ok "$DistroName is Running"
+} else {
+    Write-Warn "$DistroName not yet showing as Running — give it a few seconds and check 'wsl -l -v'"
+}
+
 Write-Host ''
 Write-Host 'Installed.' -ForegroundColor Green
+if (-not $NoAutoStart) {
+    Write-Host 'wsl-vpnfix is running and will start automatically at every logon.' -ForegroundColor Green
+}
 Write-Host ''
-Write-Host 'Next:' -ForegroundColor Cyan
-Write-Host "  wsl -d $DistroName            # start the appliance (keep window open)"
-Write-Host "  wsl -d Ubuntu -- curl -sI https://1.1.1.1   # validate from a sibling distro"
+Write-Host 'Optional — verify from a sibling distro:' -ForegroundColor Cyan
+Write-Host "  wsl -d Ubuntu -- curl -sI https://1.1.1.1   # expect HTTP/2 200"
 Write-Host ''
-Write-Host "Uninstall:  wsl --unregister $DistroName"
+Write-Host 'Uninstall:'
+if (-not $NoAutoStart) {
+    Write-Host "  Unregister-ScheduledTask -TaskName $TaskName -Confirm:`$false"
+}
+Write-Host "  wsl --terminate $DistroName"
+Write-Host "  wsl --unregister $DistroName"
+Write-Host "  Remove-Item -Recurse ""$InstallDir"""
 Write-Host ''

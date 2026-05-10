@@ -87,7 +87,7 @@ Open **PowerShell** (regular, not admin) and run:
 iwr -UseBasicParsing https://raw.githubusercontent.com/zeroznet/wsl-vpnfix/main/scripts/install-wslvpnfix.ps1 | iex
 ```
 
-This pulls the latest signed release tarball from GitHub Releases, verifies it against `SHA256SUMS`, imports it as the `wsl-vpnfix` distro under `%LOCALAPPDATA%\wsl-vpnfix\`, and prints the next-step command.
+This pulls the latest release tarball from GitHub Releases, verifies it against `SHA256SUMS`, imports it as the `wsl-vpnfix` distro under `%LOCALAPPDATA%\wsl-vpnfix\`, starts the appliance silently in the background (no visible console window), and registers a per-user Task Scheduler entry named `wsl-vpnfix` that re-launches it at every logon. Native Windows mechanism, no scripts in `shell:startup`, auditable from `taskschd.msc`. After the script returns, your other WSL distros already have working network connectivity through it.
 
 Override the defaults with parameters:
 
@@ -103,6 +103,7 @@ $sb = [scriptblock]::Create($script)
 | `-DistroName` | `wsl-vpnfix` | name to register under `wsl --list` |
 | `-InstallDir` | `$env:LOCALAPPDATA\wsl-vpnfix` | where the rootfs `ext4.vhdx` lives |
 | `-Force` | off | unregister an existing distro of the same name without prompting |
+| `-NoAutoStart` | off | skip the silent auto-start launcher; you control startup manually |
 
 ### Manual install
 
@@ -139,28 +140,28 @@ The build runs inside a digest-pinned Alpine container via `podman` (or `docker`
 
 ## Usage
 
-After import, start the appliance:
+The installer leaves the appliance running, configured to auto-start at every logon. There is nothing to type after install. Your other WSL distros (Ubuntu, Debian, etc.) inherit working network connectivity through it — including while the corporate VPN is connected.
+
+Optional — verify it's up:
 
 ```powershell
-wsl -d wsl-vpnfix
+wsl -l -v                                    # wsl-vpnfix should show 'Running'
+wsl -d Ubuntu -- curl -sI https://1.1.1.1   # expect HTTP/2 200
 ```
 
-You'll see the orchestrator's startup line, e.g. `wsl-vpnfix 0.1.0 (<commit>) — wsltap up, gvproxy linked, nat installed`. Leave that PowerShell window open. As long as the `wsl-vpnfix` distro is running, your other WSL distros (Ubuntu, Debian, etc.) inherit working network connectivity through it — including while the corporate VPN is connected.
+Manual control, if you ever need it:
 
-In a second PowerShell window, validate from a sibling distro:
+| Action | Command |
+|---|---|
+| Restart the appliance | `wsl --terminate wsl-vpnfix; Start-ScheduledTask -TaskName wsl-vpnfix` |
+| Stop the appliance | `wsl --terminate wsl-vpnfix` |
+| Audit the auto-start entry | `Get-ScheduledTask -TaskName wsl-vpnfix \| Select-Object -Property *` (or `taskschd.msc`) |
+| Disable auto-start at logon | `Disable-ScheduledTask -TaskName wsl-vpnfix` |
+| Re-enable auto-start at logon | `Enable-ScheduledTask -TaskName wsl-vpnfix` |
+| Remove auto-start entirely | `Unregister-ScheduledTask -TaskName wsl-vpnfix -Confirm:$false` |
+| Inspect the orchestrator interactively | `wsl -d wsl-vpnfix` (drops you into a root shell; the orchestrator stdout is captured per session) |
 
-```powershell
-wsl -d Ubuntu -- curl -sI https://1.1.1.1
-# Expected: HTTP/2 200
-```
-
-To run wsl-vpnfix in the background and let your terminal go:
-
-```powershell
-Start-Process wsl -ArgumentList '-d','wsl-vpnfix' -WindowStyle Hidden
-```
-
-To auto-start at logon, drop a shortcut to that command into `shell:startup`. Or if you prefer, `wsl --terminate wsl-vpnfix && wsl -d wsl-vpnfix` cleanly cycles it.
+The auto-start mechanism is a single per-user Task Scheduler entry. No service, no admin rights, no scripts in `shell:startup`. The task action is a plain hidden `powershell.exe` that calls `wsl.exe -d wsl-vpnfix --exec /bin/true` and exits — the orchestrator stays alive as a child of WSL's `/init`.
 
 ## Updating
 
@@ -173,6 +174,7 @@ The installer detects an existing `wsl-vpnfix` distro, prompts before overwritin
 ## Uninstall
 
 ```powershell
+Unregister-ScheduledTask -TaskName wsl-vpnfix -Confirm:$false
 wsl --terminate wsl-vpnfix
 wsl --unregister wsl-vpnfix
 Remove-Item -Recurse "$env:LOCALAPPDATA\wsl-vpnfix"
