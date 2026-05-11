@@ -46,6 +46,15 @@
       "commitMessagePrefix": "deps(gvisor-tap-vsock):",
       "commitMessageTopic": "containers/gvisor-tap-vsock",
       "commitMessageExtra": "to {{newVersion}}"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions",
+      "addLabels": ["deps:github-actions"],
+      "commitMessagePrefix": "deps(actions):",
+      "commitMessageTopic": "{{depName}}",
+      "commitMessageExtra": "to {{newVersion}}",
+      "pinDigests": true
     }
   ],
   "customManagers": [
