@@ -1,0 +1,68 @@
+# written by Robert Bopko (github.com/zeroznet) with Boba Bott (Claude Opus 4.7)
+name: Bug report
+description: Something works wrong, breaks, or behaves unexpectedly.
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: wsl-vpnfix version
+      description: The release tag you installed (e.g. `v0.2.1`). If unsure, run `wsl -d wsl-vpnfix -- /sbin/wsl-vpnfix --version` or check the directory name under `%LOCALAPPDATA%\wsl-vpnfix\`.
+      placeholder: v0.2.1
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      description: Output of `winver` or `(Get-ComputerInfo).WindowsVersion` from PowerShell.
+      placeholder: Windows 11 24H2 (10.0.26100.x)
+    validations:
+      required: true
+  - type: input
+    id: wsl-version
+    attributes:
+      label: WSL version
+      description: Output of `wsl --version` from PowerShell.
+      placeholder: WSL 2.x.x.x, Kernel 6.x.x.x
+    validations:
+      required: true
+  - type: dropdown
+    id: vpn-client
+    attributes:
+      label: VPN client (if relevant to the bug)
+      options:
+        - "(none / not relevant)"
+        - Cisco AnyConnect
+        - Palo Alto GlobalProtect
+        - Zscaler
+        - Pulse Secure / Ivanti
+        - FortiClient
+        - Other (describe in the body)
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you do, what did you expect, what did you get instead? Exact commands and exact output beat prose.
+    validations:
+      required: true
+  - type: textarea
+    id: orchestrator-log
+    attributes:
+      label: Orchestrator log
+      description: Drop into the appliance with `wsl -d wsl-vpnfix` and paste anything the orchestrator wrote to stdout. Raw is fine; do not redact IPs or hostnames unless they are sensitive.
+      render: text
+  - type: textarea
+    id: nft-state
+    attributes:
+      label: nftables ruleset (optional)
+      description: Output of `wsl -d wsl-vpnfix -- nft list ruleset`. Useful for routing-related bugs.
+      render: text
+  - type: textarea
+    id: install-output
+    attributes:
+      label: Installer output (if the bug is in install / upgrade / uninstall)
+      description: The console output of the PowerShell installer. Mark any path you want redacted.
+      render: text
