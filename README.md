@@ -114,7 +114,7 @@ If you'd rather not pipe a script from the internet — sensible — grab the ar
 3. Verify the tarball:
 
    ```powershell
-   Get-FileHash wsl-vpnfix-0.1.0.tar.gz -Algorithm SHA256
+   Get-FileHash wsl-vpnfix-X.Y.Z.tar.gz -Algorithm SHA256
    # Compare against the line for that filename in SHA256SUMS.
    ```
 
@@ -123,7 +123,7 @@ If you'd rather not pipe a script from the internet — sensible — grab the ar
    ```powershell
    $dst = "$env:LOCALAPPDATA\wsl-vpnfix"
    New-Item -ItemType Directory -Force -Path $dst | Out-Null
-   wsl --import wsl-vpnfix $dst .\wsl-vpnfix-0.1.0.tar.gz --version 2
+   wsl --import wsl-vpnfix $dst .\wsl-vpnfix-X.Y.Z.tar.gz --version 2
    ```
 
 ### Build from source
@@ -132,8 +132,8 @@ The release artifact is reproducible — building from the same git commit + `bu
 
 ```sh
 git clone https://github.com/zeroznet/wsl-vpnfix && cd wsl-vpnfix
-./build/pack.sh 0.1.0
-sha256sum out/wsl-vpnfix-0.1.0.tar.gz
+./build/pack.sh X.Y.Z
+sha256sum out/wsl-vpnfix-X.Y.Z.tar.gz
 ```
 
 The build runs inside a digest-pinned Alpine container via `podman` (or `docker`, if `podman` is missing). Toolchain is fully self-contained — no Go install on the host.
