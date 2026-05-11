@@ -17,3 +17,11 @@
 # Claude Code local settings (per-developer permission allowlist; never committed)
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+
+# Claude Code session artifacts (per-session handoff files; never committed)
+HANDOFF.md
+HANDOFF.md.bak
+
+# Local env / secrets
+.env
+.env.*
