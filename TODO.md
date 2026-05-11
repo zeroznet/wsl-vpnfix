@@ -8,6 +8,8 @@ Open work only, ordered by temporal urgency: **Now** = active sprint or next-act
 
 ## Later
 
+- [ ] **Run `/ica` after some bake time.** End-to-end architectural review pass once the Phase A→C codebase has settled and a few real users have exercised it. Expect candidates in: orchestrator lifecycle (process supervision, signal flow, partial-init recovery — see F-014), netfilter/netlink boundary (rule-set construction is one big function), config validation surface (env loader vs. Config struct duplication), test seam (no fault-injection harness was a deliberate Phase C drop, may want to revisit). Diagnose-only first; act on one item at a time per `/ica` discipline.
+
 ## Backlog
 
 - [ ] **Re-enable strict `govulncheck` in CI.** `.github/workflows/ci.yml` currently has `continue-on-error: true` on the govulncheck step because Go 1.25.9 (the latest alpine apk pin) still has 2 stdlib CVEs (`GO-2026-4971` net/Dial NUL on Windows, `GO-2026-4918` net/http HTTP/2 SETTINGS_MAX_FRAME_SIZE infinite loop) fixed in 1.25.10. Both are low-exposure for our threat model (Linux-only target, gvproxy-trusted HTTP/2 peer). When alpine ships go 1.25.10 (or later) and Renovate bumps `dev/Containerfile` + `build/Dockerfile.rootfs` apk pin in lockstep with `go.mod`, drop the `continue-on-error` line.

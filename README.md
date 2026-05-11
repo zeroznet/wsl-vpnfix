@@ -94,7 +94,7 @@ Override the defaults with parameters:
 ```powershell
 $script = (iwr -UseBasicParsing https://raw.githubusercontent.com/zeroznet/wsl-vpnfix/main/scripts/install-wslvpnfix.ps1).Content
 $sb = [scriptblock]::Create($script)
-& $sb -Tag v0.1.0 -DistroName wsl-vpnfix -InstallDir "$env:LOCALAPPDATA\wsl-vpnfix"
+& $sb -Tag v0.2.0 -DistroName wsl-vpnfix -InstallDir "$env:LOCALAPPDATA\wsl-vpnfix"
 ```
 
 | Parameter | Default | Purpose |
