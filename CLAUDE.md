@@ -27,7 +27,7 @@ The fork exists to:
 1. **Security-audit the original end-to-end** — shell script, Dockerfiles, distro `wsl.conf`, gvproxy invocation, the iptables NAT rules, the trap/cleanup paths, the `EUID` root check, the resolv.conf parsing, the interop assumption. Document what's fragile, what's actually a vulnerability, what's just sloppy.
 2. **Replace the base images.** Upstream ships three Dockerfiles (`alpine`, `ubuntu`, `fedora`) with no version discipline. Build on **current Alpine only** (one base image is the smaller maintenance surface and the smaller audit surface; the runtime binary is identical regardless of base, so multi-base buys us nothing). Pin digest; rebuild on base updates.
 3. **Repackage the runtime in Go.** Replace upstream's POSIX shell script with a single static Go binary. Eliminates shell-injection / trap-fragility / iptables-alias hacks. nftables driven via the netlink-typed Go library, not by shelling out. See `docs/superpowers/specs/2026-05-08-wsl-vpnfix-design.md` for the full architecture.
-4. **Sleek public surface.** Same presentation discipline as [`zeroznet/nanocontext`](https://github.com/zeroznet/nanocontext): centered logo, badges, tight TOC, problem/flow/install/usage/anti-features sections, prose that respects the reader. README is a product page, not a manual.
+4. **Sleek public surface.** Same presentation discipline as [`zeroznet/nanocontext`](https://github.com/zeroznet/nanocontext): centered logo, badges, tight TOC, problem/flow/install/usage sections, prose that respects the reader. README is a product page, not a manual. Scope-fit principles (formerly a README "Anti-features" section, deleted 2026-05-11) are now enforced at submission time via the feature-request issue template's required checkboxes.
 
 Project directory is `wsl-vpnfix`. The Git repo and any published image artifacts use the same name.
 
@@ -68,7 +68,7 @@ External dependencies upstream pulls from GitHub release artifacts of `container
 2. **Audit document.** Short, honest, per-finding. Severity, file, line range, what an attacker or buggy interaction can do, fix or mitigation. Lives in `docs/SECURITY-AUDIT.md` (create only when there are findings to record).
 3. **Single static Go binary as the runtime.** No shell. Strict input validation (regex per IP/MAC/path/hostname), explicit env allowlist for child processes, signal-driven lifecycle, idempotent cleanup that survives partial failures.
 4. **Reproducible release pipeline.** Tagged release → built tarball + image digest + checksums + SBOM. No "build on my machine" releases.
-5. **Sleek README.** Logo, badges, TOC, problem statement, flow diagram, install matrix, anti-features section. Match nanocontext's discipline; do not copy its visual identity.
+5. **Sleek README.** Logo, badges, TOC, problem statement, flow diagram, install matrix. Match nanocontext's discipline; do not copy its visual identity.
 
 ## Source of truth references
 
@@ -100,7 +100,7 @@ When the rebuild touches an external SDK or HTTP API, the workspace's `nanoconte
 - No standalone install path (drop binaries into the user's primary distro). Distro-only.
 - No marketing fluff in the README. nanocontext's tone, not a startup landing page.
 - No "improvements" outside the rebuild scope. Anything not on the goals list is a separate proposal.
-- No code scanning workflow (CodeQL etc.). `govulncheck` covers stdlib + dep CVEs (currently non-blocking pending alpine apk Go 1.25.10 per TODO Backlog) and Dependabot opens auto-PRs for flagged deps. CodeQL would add CI surface and triage burden disproportionate to value at solo-project scale; revisit if findings start mattering or contributor base grows.
+- No code scanning workflow (CodeQL etc.). `govulncheck` + Dependabot cover the CVE surface; CodeQL adds CI + triage burden disproportionate at solo-project scale.
 
 ## Status
 

@@ -1,3 +1,4 @@
+<!-- written by Robert Bopko (github.com/zeroznet) with Boba Bott (Claude Opus 4.7) -->
 <!-- Keep this short. Match the project's PR style: no marketing fluff, no recap closer. Delete sections that do not apply. -->
 
 ## Summary
