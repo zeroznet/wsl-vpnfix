@@ -6,8 +6,8 @@
 # tarball plus SHA256SUMS, verifies the tarball's SHA-256 against the
 # manifest, and imports it as a WSL 2 distro. Then registers a per-user
 # Task Scheduler entry that starts the appliance silently at every Windows
-# logon — native Windows mechanism, no scripts in shell:startup, auditable
-# in `taskschd.msc`. Also kicks the appliance up immediately so you do not
+# logon (native Windows mechanism, no scripts in shell:startup, auditable
+# in `taskschd.msc`). Also kicks the appliance up immediately so you do not
 # have to log out / in.
 #
 # Designed to run from a `iwr ... | iex` one-liner; also runs cleanly
@@ -36,7 +36,13 @@ $DlBase = "https://github.com/$Repo/releases/download"
 function Write-Step { param($Msg) Write-Host "==> $Msg" -ForegroundColor Cyan }
 function Write-Ok   { param($Msg) Write-Host "    $Msg" -ForegroundColor Green }
 function Write-Warn { param($Msg) Write-Host "!!! $Msg" -ForegroundColor Yellow }
-function Die        { param($Msg) Write-Host "*** $Msg" -ForegroundColor Red; exit 1 }
+function Die        { param($Msg) Write-Host "*** $Msg" -ForegroundColor Red; throw $Msg }
+
+# When launched via `iwr ... | iex`, the script body runs in the host shell
+# scope. A bare `exit` would close that shell. Wrapping the body in try/catch
+# and using `throw` from Die lets us exit gracefully on error without taking
+# the user's PowerShell session with us.
+try {
 
 if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
     Die 'wsl.exe not found on PATH. Install WSL first: `wsl --install`.'
@@ -99,7 +105,7 @@ try {
             Write-Warn "distro '$DistroName' exists, --Force given, unregistering"
         } else {
             $reply = Read-Host "Distro '$DistroName' already exists. Unregister and overwrite? [y/N]"
-            if ($reply -notmatch '^[Yy]') { Die 'aborted by user' }
+            if ($reply -notmatch '^[Yy]') { Write-Warn 'aborted by user'; return }
         }
         Write-Step "Terminating + unregistering existing '$DistroName'"
         & wsl.exe --terminate $DistroName 2>$null | Out-Null
@@ -165,7 +171,7 @@ $running = (& wsl.exe --list --running --quiet) 2>$null |
 if ($running) {
     Write-Ok "$DistroName is Running"
 } else {
-    Write-Warn "$DistroName not yet showing as Running — give it a few seconds and check 'wsl -l -v'"
+    Write-Warn "$DistroName not yet showing as Running, give it a few seconds and check 'wsl -l -v'"
 }
 
 Write-Host ''
@@ -174,14 +180,18 @@ if (-not $NoAutoStart) {
     Write-Host 'wsl-vpnfix is running and will start automatically at every logon.' -ForegroundColor Green
 }
 Write-Host ''
-Write-Host 'Optional — verify from a sibling distro:' -ForegroundColor Cyan
-Write-Host "  wsl -d Ubuntu -- curl -sI https://1.1.1.1   # expect HTTP/2 200"
-Write-Host ''
-Write-Host 'Uninstall:'
+Write-Host 'Uninstall:' -ForegroundColor Cyan
 if (-not $NoAutoStart) {
-    Write-Host "  Unregister-ScheduledTask -TaskName $TaskName -Confirm:`$false"
+    Write-Host "    Unregister-ScheduledTask -TaskName $TaskName -Confirm:`$false" -ForegroundColor Green
 }
-Write-Host "  wsl --terminate $DistroName"
-Write-Host "  wsl --unregister $DistroName"
-Write-Host "  Remove-Item -Recurse ""$InstallDir"""
+Write-Host "    wsl --terminate $DistroName" -ForegroundColor Green
+Write-Host "    wsl --unregister $DistroName" -ForegroundColor Green
+Write-Host "    Remove-Item -Recurse ""$InstallDir""" -ForegroundColor Green
 Write-Host ''
+
+} catch {
+    # Die already printed the red message; swallow the exception so we don't
+    # fall through to PowerShell's default error display, which would also
+    # exit the iex-hosting shell. `return` exits the script block cleanly.
+    return
+}

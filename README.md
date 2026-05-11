@@ -27,7 +27,6 @@
   <a href="#usage">Usage</a> ·
   <a href="#updating">Updating</a> ·
   <a href="#uninstall">Uninstall</a> ·
-  <a href="#what-it-isnt">Anti-features</a> ·
   <a href="#credits">Credits</a>
 </p>
 
@@ -41,9 +40,9 @@ A from-scratch rebuild of the dormant [`sakai135/wsl-vpnkit`](https://github.com
 
 ## The problem
 
-WSL 2 runs in a lightweight VM with its own virtual network. Many corporate VPN clients (Cisco AnyConnect, GlobalProtect, Zscaler, Pulse, FortiClient, etc.) install routes or filters on the Windows side that the WSL VM's NIC cannot reach. When the VPN connects, your Linux distros lose DNS, lose internet, lose package managers, lose `git push`. When the VPN disconnects, everything works again.
+WSL 2 runs in a lightweight VM with its own virtual network. Many corporate VPN clients (Cisco AnyConnect, GlobalProtect, Zscaler, Pulse, FortiClient, etc.) install routes or filters on the Windows side that the WSL VM's NIC cannot reach. When the VPN connects, your Linux distros lose connectivity. When the VPN disconnects, everything works again.
 
-The Microsoft-supported workarounds (mirrored mode, DNS tunneling) only cover some clients on some Windows builds, and they require Windows-side admin to flip on. wsl-vpnfix sidesteps the OS networking question entirely: WSL traffic never tries to leave the WSL VM as IP packets — it gets handed to a user-mode network stack that runs on the Windows host, which then issues outbound connections from the host's network identity. The VPN sees normal host traffic and doesn't filter it.
+The Microsoft-supported workarounds (mirrored mode, DNS tunneling) only cover some clients on some Windows builds, and they require Windows-side admin to flip on. wsl-vpnfix sidesteps the OS networking question entirely: WSL traffic never tries to leave the WSL VM as IP packets. It gets handed to a user-mode network stack that runs on the Windows host, which then issues outbound connections from the host's network identity. The VPN sees normal host traffic and doesn't filter it.
 
 ## How it works
 
@@ -73,7 +72,7 @@ The Microsoft-supported workarounds (mirrored mode, DNS tunneling) only cover so
 5. nftables rewrites: WSL2 host gateway `→` host IP, DNS `→` gvproxy gateway, masquerade out the tap.
 6. Other WSL distros use the same WSL 2 VM kernel and inherit the route. Their traffic goes out through the .exe, which runs as a normal Windows process, which the VPN does not filter.
 
-The runtime is one static Go binary (`/sbin/wsl-vpnfix`) that talks to the kernel via netlink (no shelling out to `iptables`, `nft`, or `ip`), and one Windows .exe shipped alongside it. No daemon installer, no Windows service, no persistent Windows-side process — the optional auto-start at logon is a one-shot Task Scheduler entry that kicks the distro and exits in under a second.
+The runtime is one static Go binary (`/sbin/wsl-vpnfix`) that talks to the kernel via netlink (no shelling out to `iptables`, `nft`, or `ip`), and one Windows .exe shipped alongside it. No daemon installer, no Windows service, no persistent Windows-side process. The optional auto-start at logon is a one-shot Task Scheduler entry that kicks the distro and exits in under a second.
 
 ## Install
 
@@ -107,7 +106,7 @@ $sb = [scriptblock]::Create($script)
 
 ### Manual install
 
-If you'd rather not pipe a script from the internet — sensible — grab the artifacts and import them by hand:
+If you'd rather not pipe a script from the internet, grab the artifacts and import them by hand:
 
 1. Go to the [latest release](https://github.com/zeroznet/wsl-vpnfix/releases/latest).
 2. Download `wsl-vpnfix-X.Y.Z.tar.gz` and `SHA256SUMS`.
@@ -128,7 +127,7 @@ If you'd rather not pipe a script from the internet — sensible — grab the ar
 
 ### Build from source
 
-The release artifact is reproducible — building from the same git commit + `build/upstream-pins.yaml` produces a bit-identical tarball. Verify or rebuild yourself:
+The release artifact is reproducible: building from the same git commit + `build/upstream-pins.yaml` produces a bit-identical tarball. Verify or rebuild yourself:
 
 ```sh
 git clone https://github.com/zeroznet/wsl-vpnfix && cd wsl-vpnfix
@@ -136,13 +135,13 @@ git clone https://github.com/zeroznet/wsl-vpnfix && cd wsl-vpnfix
 sha256sum out/wsl-vpnfix-X.Y.Z.tar.gz
 ```
 
-The build runs inside a digest-pinned Alpine container via `podman` (or `docker`, if `podman` is missing). Toolchain is fully self-contained — no Go install on the host.
+The build runs inside a digest-pinned Alpine container via `podman` (or `docker`, if `podman` is missing). Toolchain is fully self-contained: no Go install on the host.
 
 ## Usage
 
-The installer leaves the appliance running, configured to auto-start at every logon. There is nothing to type after install. Your other WSL distros (Ubuntu, Debian, etc.) inherit working network connectivity through it — including while the corporate VPN is connected.
+The installer leaves the appliance running, configured to auto-start at every logon. There is nothing to type after install. Your other WSL distros (Ubuntu, Debian, etc.) inherit working network connectivity through it, including while the corporate VPN is connected.
 
-Optional — verify it's up:
+Verify it's up:
 
 ```powershell
 wsl -l -v                                    # wsl-vpnfix should show 'Running'
@@ -161,7 +160,7 @@ Manual control, if you ever need it:
 | Remove auto-start entirely | `Unregister-ScheduledTask -TaskName wsl-vpnfix -Confirm:$false` |
 | Inspect the orchestrator interactively | `wsl -d wsl-vpnfix` (drops you into a root shell; the orchestrator stdout is captured per session) |
 
-The auto-start mechanism is a single per-user Task Scheduler entry. No service, no admin rights, no scripts in `shell:startup`. The task action is a plain hidden `powershell.exe` that calls `wsl.exe -d wsl-vpnfix --exec /bin/true` and exits — the orchestrator stays alive as a child of WSL's `/init`.
+The auto-start mechanism is a single per-user Task Scheduler entry. No service, no admin rights, no scripts in `shell:startup`. The task action is a plain hidden `powershell.exe` that calls `wsl.exe -d wsl-vpnfix --exec /bin/true` and exits. The orchestrator stays alive as a child of WSL's `/init`.
 
 ## Updating
 
@@ -182,37 +181,20 @@ Remove-Item -Recurse "$env:LOCALAPPDATA\wsl-vpnfix"
 
 Four lines, in order: drop the auto-start task, terminate the distro, drop the WSL registration, drop the rootfs. No Windows service, no registry hive, no leftover `%PROGRAMDATA%`. The `C:\Users\Public\.wsl-vpnfix\` staging directory holds the .exe and is removed by the orchestrator on graceful shutdown; if a crash leaves it behind, delete it by hand.
 
-## What it isn't
-
-This is deliberately a small tool. It does not, and will not:
-
-- act as a VPN client itself, or replace one
-- decrypt, intercept, or proxy VPN traffic
-- need or request Windows admin rights
-- modify Windows-side routing, firewall, or DNS resolver
-- install a Windows service, or require elevation at install or runtime — the per-user logon task and `wsl-gvproxy.exe` both run as the current user, no admin
-- ship Ubuntu or Fedora variants — Alpine is the only base
-- ship anything but a single static Go binary as the runtime
-- shell out to `iptables`, `nft`, `ip`, `wsl.exe`, or `cmd.exe`
-- include a GUI, a settings panel, or an autoconfig helper
-- collect telemetry, phone home, or log to a remote sink
-
-If you need any of the above, you need a different tool.
-
 ## Files
 
-- `cmd/wsl-vpnfix/` — orchestrator entrypoint
-- `internal/{config,netlink,netfilter,process,wsl,healthcheck}/` — runtime modules
-- `build/Dockerfile.rootfs` — three-stage rootfs build (Go builder, upstream fetcher, final Alpine assembly)
-- `build/pack.sh` — deterministic tarball producer
-- `build/upstream-pins.yaml` — pinned `gvisor-tap-vsock` release + SHA-256s
-- `scripts/install-wslvpnfix.ps1` — Windows-side installer
-- `dev/` — dev container (Alpine + Go) and run wrapper
-- `docs/superpowers/{specs,plans}/` — design contract and frozen phase plans
+- `cmd/wsl-vpnfix/`: orchestrator entrypoint
+- `internal/{config,netlink,netfilter,process,wsl,healthcheck}/`: runtime modules
+- `build/Dockerfile.rootfs`: three-stage rootfs build (Go builder, upstream fetcher, final Alpine assembly)
+- `build/pack.sh`: deterministic tarball producer
+- `build/upstream-pins.yaml`: pinned `gvisor-tap-vsock` release + SHA-256s
+- `scripts/install-wslvpnfix.ps1`: Windows-side installer
+- `dev/`: dev container (Alpine + Go) and run wrapper
+- `docs/superpowers/{specs,plans}/`: design contract and frozen phase plans
 
 ## Credits
 
-The networking backend is [containers/gvisor-tap-vsock](https://github.com/containers/gvisor-tap-vsock) — the `gvproxy.exe` and `gvforwarder` binaries are pulled verbatim from upstream releases and verified by SHA-256 before bundling. Idea and reference architecture: [sakai135/wsl-vpnkit](https://github.com/sakai135/wsl-vpnkit).
+The networking backend is [containers/gvisor-tap-vsock](https://github.com/containers/gvisor-tap-vsock). The `gvproxy.exe` and `gvforwarder` binaries are pulled verbatim from upstream releases and verified by SHA-256 before bundling. Idea and reference architecture: [sakai135/wsl-vpnkit](https://github.com/sakai135/wsl-vpnkit).
 
 ## License
 
