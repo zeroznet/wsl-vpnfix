@@ -165,7 +165,7 @@ In `CLAUDE.md`:
 ## 9. Success criteria
 
 - `docs/THREAT-MODEL.md` exists; master spec section 3 is a one-line pointer to it; no duplicated content.
-- `docs/SECURITY-AUDIT.md` catalogues every Phase A C-1..C-8 finding, the four Phase B follow-on commits, the F-007 reversal, both known gaps from `TODO.md` Backlog, and the two tracked workarounds.
+- `docs/SECURITY-AUDIT.md` catalogues 17 findings: seven Phase A self-review corrections (C-1..C-8, with C-4 folded into F-007 because the C-4 saddr-scope fix is exactly what F-007 reverses), three smaller A-pass corrections, three Phase B follow-on commits (excluding `0893652` which is F-007), the F-007 reversal, both known gaps from `TODO.md` Backlog, and the two tracked workarounds.
 - Master spec is internally consistent: no addendum overrides, all section 4 edits applied in place, section 8 reflects current state only, section 3 is a pointer.
 - `docs/superpowers/specs/2026-05-09-wsl-vpnfix-phase-b-design.md` deleted; repo-wide grep returns no references.
 - `TODO.md` Backlog has explicit bullets for default-route persistence and `wsl-vpnfixctl`; the "master spec rebase" bullet is gone; the Phase C kickoff bullet is gone.

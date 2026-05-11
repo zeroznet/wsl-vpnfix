@@ -15,16 +15,13 @@ A short-catalogue audit of `wsl-vpnfix` covering the Phase A self-review correct
 - F-005 user-edited resolv.conf silently misdirects NAT — if WSL did not auto-generate resolv.conf, the nameserver line was a user-supplied value and the parsed IP flowed into nftables DNAT without validation against the expected WSL2 gateway range; status: fixed-in-v0.1.0 (Phase A smaller corrections, autoGenMarker check + WSL2_GATEWAY_IP env override).
 - F-006 whitespace-only env values pass validation — an env var set to spaces or tabs was not rejected, allowing a blank but non-empty string to reach path or IP validators; status: fixed-in-v0.1.0 (Phase A smaller corrections).
 - F-008 pgroup-kill test assertion silently passes on zombie-state hosts — test would silently pass on PID-namespace hosts that do not reap orphans (rootless podman, busybox-init Alpine, etc.) because the grandchild lingers as a zombie and `kill(0)` returns nil instead of ESRCH; CI noise masks real pgroup-kill regressions; status: fixed-in-v0.1.0 (Phase A C-7 — accept ESRCH OR `/proc/<pid>/status State: Z` as proof of pgroup-kill success).
+- F-010 gvproxy staged over 9P triggers EXCEPTION_IN_PAGE_ERROR — Win 11 25H2 demand-pages `.exe` code from `9P` (the Linux filesystem mount) which fails with `0xc0000006` before gvproxy.exe reads its first stdin byte; status: fixed-in-v0.1.0 (`974e9b4`, stages the exe to Windows NTFS via DrvFs so pages-in uses the native NTFS path).
+- F-011 gvproxy default SSH listener conflicts on port 2222 — gvproxy v0.8.8 opens `127.0.0.1:2222` by default even when SSH forwarding is not needed; any pre-existing listener on that port causes gvproxy to exit with `cannot add network services`; status: fixed-in-v0.1.0 (`2b54529`, passes `-ssh-port=-1` to disable).
 
 ## Netfilter
 
 - F-007 MASQUERADE saddr CIDR scope dropped sibling-distro packets — Phase A C-4 added `ip saddr 192.168.127.0/24` to the MASQUERADE rule per master spec section 3.5 example finding F-007, reasoning that unscoped masquerade could mask attacker-sourced packets; in production, sibling distros (Ubuntu, etc.) have eth0 IPs in `172.29.x.x`, outside `192.168.127.0/24`, so the qualifier caused their packets to bypass MASQUERADE, gvproxy saw the original `172.x.x.x` source IP, could not route the reply (its user-mode stack only knows `192.168.127.0/24`), and sibling connectivity failed entirely; the qualifier was the wrong fix for the actual functional requirement; status: reversed in `0893652` (Phase B B3 smoke evidence: docs/smoke-2026-05-10.md home-PC, docs/smoke-2026-05-10-workpc-vpn.md work-PC).
 - F-009 nft atomic semantics abort on non-existent table delete — `Install` mixed `DelTable` + `AddTable` in one batched netlink transaction; deleting a non-existent table returns `ENOENT` which the batch propagates as an error, aborting the whole transaction and leaving no ruleset installed; status: fixed-in-v0.1.0 (Phase A C-5, split into two Conns: tolerant delete batch + strict create batch).
-
-## Supply chain
-
-- F-010 gvproxy staged over 9P triggers EXCEPTION_IN_PAGE_ERROR — Win 11 25H2 demand-pages `.exe` code from `9P` (the Linux filesystem mount) which fails with `0xc0000006` before gvproxy.exe reads its first stdin byte; status: fixed-in-v0.1.0 (`974e9b4`, stages the exe to Windows NTFS via DrvFs so pages-in uses the native NTFS path).
-- F-011 gvproxy default SSH listener conflicts on port 2222 — gvproxy v0.8.8 opens `127.0.0.1:2222` by default even when SSH forwarding is not needed; any pre-existing listener on that port causes gvproxy to exit with `cannot add network services`; status: fixed-in-v0.1.0 (`2b54529`, passes `-ssh-port=-1` to disable).
 
 ## WSL interop
 
