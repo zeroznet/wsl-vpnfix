@@ -3,7 +3,7 @@
 # wsl-vpnfix Phase C — Design
 
 **Date:** 2026-05-10
-**Status:** Draft, pending user review
+**Status:** Completed 2026-05-10
 **Author:** Robert Bopko, with Claude Opus 4.7 assistance
 
 Closes the documentation backbone left open after Phase B: a standalone threat model, a security-audit catalogue, and a master-spec rebase that folds the Phase B addendum into the master spec. Phase C ships no new runtime code. It closes with the `v0.2.0` tag on `main`.
