@@ -1,0 +1,6 @@
+# written by Robert Bopko (github.com/zeroznet) with Boba Bott (Claude Opus 4.7)
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/zeroznet/wsl-vpnfix/security/advisories/new
+    about: Please report security issues privately via Security Advisories, not via public issues.

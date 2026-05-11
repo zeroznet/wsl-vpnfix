@@ -1,0 +1,33 @@
+# written by Robert Bopko (github.com/zeroznet) with Boba Bott (Claude Opus 4.7)
+name: Feature request
+description: A new capability, default change, or scope expansion.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the user-visible problem first. The proposed solution can come second.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Optional. If you have a concrete idea, share it. Otherwise leave blank and we discuss.
+  - type: checkboxes
+    id: scope-fit
+    attributes:
+      label: Scope check
+      description: This project deliberately rejects some directions. Confirm the request does not ask for any of these.
+      options:
+        - label: Not asking the appliance to act as a VPN client itself, decrypt VPN traffic, or proxy it.
+          required: true
+        - label: Not asking for Ubuntu / Fedora variants (Alpine is the only base by design).
+          required: true
+        - label: Not asking for a GUI, settings panel, or autoconfig helper.
+          required: true
+        - label: Not asking for telemetry, phone-home, or remote logging.
+          required: true
+        - label: Not asking the runtime to shell out to `iptables`, `nft`, `ip`, `wsl.exe`, or `cmd.exe` (Go orchestrator talks to the kernel via netlink only).
+          required: true
