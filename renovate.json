@@ -2,8 +2,7 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended",
-    ":semanticCommits",
-    ":disableDependencyDashboard"
+    ":semanticCommits"
   ],
   "schedule": [
     "before 6am on monday"
@@ -67,7 +66,7 @@
       "matchStrings": [
         "FROM\\s+alpine@(?<currentDigest>sha256:[a-f0-9]{64})"
       ],
-      "currentValueTemplate": "latest",
+      "currentValueTemplate": "3.23",
       "depNameTemplate": "alpine",
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"

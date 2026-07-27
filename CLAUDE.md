@@ -114,6 +114,8 @@ When the rebuild touches an external SDK or HTTP API, the workspace's `nanoconte
 
 **Public-surface polish (post-v0.2.1)** as of 2026-05-11. PR #21 added `.github/PULL_REQUEST_TEMPLATE.md` (codifies the `## Summary` + `## Test plan` shape every PR was already using by hand), `SECURITY.md` (private disclosure path via GH Security Advisories + scope/out-of-scope statement + pointer to `docs/SECURITY-AUDIT.md`), `.github/ISSUE_TEMPLATE/{bug_report,feature_request,config}.yml` (form-based issues; feature requests have scope-fit checkboxes carrying the deleted README "Anti-features" principles), and `assets/logo-social.png` (1280×640 letterboxed render of `assets/logo.svg`, letterbox `#0d1117` matches gradient top, uploaded via Settings > General > Social preview 2026-05-11). Out-of-band repo metadata (no PR; applied via `gh api`): 10 topics set (`wsl`, `wsl2`, `vpn`, `corporate-vpn`, `cisco-anyconnect`, `golang`, `alpine-linux`, `nftables`, `gvisor-tap-vsock`, `wsl-vpnkit`); Wiki + Projects tabs disabled (docs are in-repo, work tracking is `TODO.md`); 5 Renovate labels created (`dependencies`, `deps:go`, `deps:alpine`, `deps:gvisor-tap-vsock`, `deps:github-actions`) so the bot's `addLabels:` directives in `renovate.json` actually apply; merge-flow conveniences enabled (`allow_auto_merge`, `delete_branch_on_merge`, `allow_update_branch` — see project memory `project_pr_merge_dance_with_codex.md` for the operational sequence); supply-chain hardening: Dependabot security updates enabled (CVE-narrow, complementary to Renovate's tracking-latest pattern; both bots use the `dependencies` label) and private vulnerability reporting enabled (surfaces "Report a vulnerability" button on the Security tab). Release-immutability + merge-shape guard-rails: tag protection ruleset on `v*` (blocks deletion, non-fast-forward, update of release tags — once a `v0.X.Y` SHA is pushed it cannot be silently re-pointed); `allow_squash_merge` and `allow_rebase_merge` both disabled so the GitHub PR UI only offers "Create merge commit" (matches the existing pattern in `git log --merges`).
 
+**Renovate activated** as of 2026-07-28. The Mend Renovate GitHub App was never installed during Phase B — `renovate.json` sat inert for 11 weeks with zero bot PRs, discovered when the stale `go=1.25.9-r0` apk pin broke the release build (fixed in PR #30). App installed 2026-07-28 (Scan and Alert), dependency dashboard enabled, alpine digest manager fenced to the 3.23 line to match the repology `alpine_3_23/go` apk manager (RR-D-3), and CI gained an always-on fetcher-stage build verifying `build/upstream-pins.yaml` tag/sha coherence — Renovate bumps tags only, sha256 stays manual (RR-D-1). Spec: `docs/superpowers/specs/2026-07-28-renovate-repair-design.md`.
+
 ## Repo layout
 
 ```
@@ -122,7 +124,7 @@ wsl-vpnfix/
 ├── README.md                                       ← public product page (nanocontext-style; centered logo, badges, TOC)
 ├── LICENSE                                         ← BSD-2-Clause
 ├── TODO.md                                         ← open work tracker (read this before starting any session)
-├── renovate.json                                   ← 3 streams: gomod, alpine+go-apk lockstep, gvisor-tap-vsock release
+├── renovate.json                                   ← 4 streams: gomod, alpine-3.23 digest + go-apk lockstep, gvisor-tap-vsock tag (sha256 manual, CI-guarded), github-actions
 ├── go.mod, go.sum                                  ← module github.com/zeroznet/wsl-vpnfix, go 1.25.10
 ├── cmd/wsl-vpnfix/                                 ← orchestrator main + buildEnv test
 ├── internal/
@@ -144,7 +146,7 @@ wsl-vpnfix/
 │   ├── Containerfile                               ← Alpine 3.23.5 (digest-pinned) + Go 1.25.10 dev image
 │   └── run.sh                                      ← podman wrapper with persistent caches; --integration adds NET_ADMIN+NET_RAW+/dev/net/tun
 ├── .github/workflows/
-│   ├── ci.yml                                      ← gofmt, vet, mod-verify, govulncheck (non-blocking by design — apk go trails upstream, see TODO.md), unit + integration, build verify, race
+│   ├── ci.yml                                      ← gofmt, vet, mod-verify, govulncheck (non-blocking by design — apk go trails upstream, see TODO.md), unit + integration, build verify, upstream-pins verify, race
 │   └── release.yml                                 ← tag-triggered (^vN.N.N$); runs build/pack.sh; uploads tarball + SHA256SUMS + upstream-pins.yaml to GH Release
 ├── out/                                            ← gitignored; pack.sh write target
 └── docs/
