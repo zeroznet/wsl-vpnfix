@@ -84,6 +84,27 @@ jobs:
             -o /dev/null \
             ./cmd/wsl-vpnfix
 
+      # Mirrors build/pack.sh's awk parsing of build/upstream-pins.yaml.
+      # Runs on every CI pass so a tag-only Renovate bump (sha256 lines are
+      # maintained manually) turns the PR red here instead of breaking the
+      # release-tag build later, and continuously proves the pinned
+      # artifacts are still downloadable.
+      - name: Verify upstream pins (fetcher stage)
+        run: |
+          set -eu
+          PINS=build/upstream-pins.yaml
+          GVTV_TAG=$(awk '/^  tag:/ { print $2; exit }' "$PINS")
+          GVF_SHA=$(awk '/^    gvforwarder:/ { f=1; next } f && /sha256:/ { print $2; exit }' "$PINS")
+          GVP_SHA=$(awk '/^    gvproxy-windowsgui\.exe:/ { f=1; next } f && /sha256:/ { print $2; exit }' "$PINS")
+          test -n "$GVTV_TAG" && test -n "$GVF_SHA" && test -n "$GVP_SHA"
+          podman build \
+            --target fetcher \
+            --file build/Dockerfile.rootfs \
+            --build-arg "GVTV_TAG=$GVTV_TAG" \
+            --build-arg "GVTV_GVFORWARDER_SHA256=$GVF_SHA" \
+            --build-arg "GVTV_GVPROXY_EXE_SHA256=$GVP_SHA" \
+            .
+
       - name: Race detector (CGO required)
         run: |
           set -eu
