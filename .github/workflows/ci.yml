@@ -47,10 +47,12 @@ jobs:
       - name: go mod verify
         run: go mod verify
 
-      # govulncheck runs but does not gate the build while the alpine apk go
-      # package (build/Dockerfile.rootfs's go=X.Y.Z-rN pin) lags upstream Go.
-      # Re-enable strict mode once apk ships the Go release that closes the
-      # currently flagged stdlib CVEs.
+      # govulncheck runs non-blocking by design. The appliance builds with
+      # alpine's apk go, and alpine packages Go patch releases weeks after
+      # upstream security fixes, so a blocking gate would fail whenever a
+      # fresh stdlib CVE lands upstream — structural lag, not a fixable
+      # state. Review the output when bumping the toolchain; the strict-gate
+      # option (go.dev toolchain pivot) is tracked in TODO.md.
       - name: govulncheck
         continue-on-error: true
         run: |

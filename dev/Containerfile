@@ -8,10 +8,10 @@
 # Track current Alpine (security tool — stale base = stale build-tool CVEs).
 # Update digest by re-pulling alpine:latest and copying the new RepoDigest;
 # bump the apk-pinned versions in lockstep.
-FROM alpine@sha256:4d889c14e7d5a73929ab00be2ef8ff22437e7cbc545931e52554a7b00e123d8b
+FROM alpine@sha256:fd791d74b68913cbb027c6546007b3f0d3bc45125f797758156952bc2d6daf40
 
 RUN apk add --no-cache \
-        go=1.25.9-r0 \
+        go=1.25.10-r0 \
         nftables \
         iproute2 \
         git \
