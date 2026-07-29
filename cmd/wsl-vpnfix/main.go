@@ -266,8 +266,9 @@ func spawnGvforwarder(ctx context.Context, cfg config.Config) (*process.Handle, 
 	logf("gvproxy config staged: %s", configWinPath)
 
 	debugFlag := boolStr(cfg.Debug)
-	// gvproxy v0.8.8 silently ignores -listen-stdio (the value never reaches
-	// config.Interfaces.Stdio); we route everything through -config instead,
+	// gvproxy v0.8.8 silently ignored -listen-stdio (fixed in v0.8.9; the
+	// workaround stays until the post-smoke removal PR — see gvproxyYAML in
+	// stage_exe.go); we route everything through -config instead,
 	// where interfaces.stdio is set in YAML. -ssh-port is also ignored in
 	// config-file mode (a warning is logged), so we drop it. url.Values.Encode
 	// handles the colon and backslashes in the Windows config path.
