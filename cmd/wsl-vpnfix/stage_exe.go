@@ -19,7 +19,10 @@ import (
 // lines 224-262 covers qemu/bess/vfkit/vpnkit but skips stdio). Result:
 // cmd/gvproxy/main.go:291's `if config.Interfaces.Stdio != ""` always
 // fails, the AcceptStdio goroutine never starts, and the bridge is
-// silently TX-only.
+// silently TX-only. Upstream fixed the wiring in v0.8.9 ("fix(gvproxy):
+// propagate --listen-stdio flag into config"); the workaround is retained
+// until the post-smoke removal PR (see TODO.md) — the -config path works
+// unchanged on v0.8.9, so the pin bump carries no behavior change.
 //
 // Setting interfaces.stdio in YAML config bypasses the broken CLI wiring.
 // Loading via -config also disables "default mode" (cmd/gvproxy/config.go:334),
