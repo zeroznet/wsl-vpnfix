@@ -8,14 +8,18 @@
 #   - SOURCE_DATE_EPOCH       (defaults to git commit time of HEAD)
 #   - $VERSION                (positional arg or env)
 #   - build/upstream-pins.yaml (pinned upstream artifact hashes)
-#   - build/Dockerfile.rootfs  (digest-pinned Alpine base, apk versions)
+#   - build/Dockerfile.rootfs  (digest-pinned Alpine base)
 #   - go.mod / go.sum          (locked Go module graph)
 #
 # Outputs:
 #   out/wsl-vpnfix-<version>.tar.gz
 #
-# A clean rebuild from the same inputs above produces a bit-identical
-# tarball SHA-256. CI in B7 enforces this for every release tag.
+# A clean rebuild from the same inputs AND the same Alpine v3.23 package
+# repository state produces a bit-identical tarball SHA-256. The fetcher
+# and final stages install unpinned apk packages (curl, nftables,
+# iproute2, ca-certificates), so an Alpine package update between builds
+# legitimately changes the SHA. No CI job enforces double-build
+# reproducibility; the property is verified manually when it matters.
 
 set -eu
 
@@ -126,6 +130,12 @@ log "normalizing permissions in ${EXPORT_DIR} (rootless tar strips group/world b
 find "${EXPORT_DIR}" -type d -exec chmod 0755 {} +
 find "${EXPORT_DIR}" -type f -perm -u+x -exec chmod 0755 {} +
 find "${EXPORT_DIR}" -type f ! -perm -u+x -exec chmod 0644 {} +
+# The blanket 0644 above would ship a world-readable /etc/shadow (alpine
+# ships it 0640 root:shadow; the repack forces owner 0:0). Re-tighten the
+# known-sensitive files after the normalize pass.
+for f in etc/shadow etc/shadow-; do
+    [ -f "${EXPORT_DIR}/${f}" ] && chmod 0640 "${EXPORT_DIR}/${f}"
+done
 
 # tar(1) flags for determinism: --sort=name (file order), --mtime= (fixed
 # timestamp), --owner / --group / --numeric-owner (no host UID leak),

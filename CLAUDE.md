@@ -2,7 +2,7 @@
 
 # CLAUDE.md: wsl-vpnfix
 
-This file gives Claude Code project-specific context for working in this repo. Workspace-wide rules in `/home/zero/dev/CLAUDE.md` (Boba Bott persona, attribution header, commit format, behavioral guidelines #1–#12, style guide) still apply; this file only adds what is unique to wsl-vpnfix.
+This file gives Claude Code project-specific context for working in this repo. Workspace-wide rules in `/home/zero/dev/CLAUDE.md` (Boba Bott persona, attribution header, commit format, behavioral guidelines, style guide) still apply; this file only adds what is unique to wsl-vpnfix.
 
 ## Session bootstrap
 

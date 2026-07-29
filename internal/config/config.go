@@ -9,8 +9,8 @@ import (
 	"os"
 )
 
-// VpnkitGatewayIP, VpnkitHostIP, VpnkitLocalIP, VpnkitLocalCIDR, and
-// TapPrefixLen are package-level constants — not env-overridable — because
+// VpnkitGatewayIP, VpnkitHostIP, VpnkitLocalIP, and TapPrefixLen are
+// package-level constants — not env-overridable — because
 // gvproxy v0.8.9 has the host IP (192.168.127.254) hardcoded in its DNS
 // records for `host.containers.internal` and the .2:5a:94:ef:e4:0c:ee
 // mapping hardcoded in its DHCP static lease map
@@ -27,7 +27,6 @@ const (
 	VpnkitGatewayIP = "192.168.127.1"
 	VpnkitHostIP    = "192.168.127.254"
 	VpnkitLocalIP   = "192.168.127.2"
-	VpnkitLocalCIDR = "192.168.127.0/24"
 	TapPrefixLen    = 24
 )
 

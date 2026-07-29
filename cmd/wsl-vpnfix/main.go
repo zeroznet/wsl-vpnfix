@@ -232,7 +232,6 @@ func installNATRules(td *teardown, cfg config.Config, wsl2GW string) error {
 		WSL2GatewayIP:   wsl2GW,
 		VpnkitGatewayIP: config.VpnkitGatewayIP,
 		VpnkitHostIP:    config.VpnkitHostIP,
-		VpnkitLocalCIDR: config.VpnkitLocalCIDR,
 		TapName:         cfg.TapName,
 	})
 	if err != nil {
@@ -306,7 +305,7 @@ func startHealthchecks(ctx context.Context, cfg config.Config) {
 		case <-time.After(2 * time.Second):
 		}
 		logf("health: %v", healthcheck.ProbeDNS(ctx, cfg.CheckHost, cfg.CheckDNS, 3*time.Second))
-		logf("health: %v", healthcheck.ProbeHTTP(ctx, "https://"+cfg.CheckHost, 5*time.Second, nil))
+		logf("health: %v", healthcheck.ProbeHTTP(ctx, "https://"+cfg.CheckHost, 5*time.Second))
 	}()
 }
 
@@ -315,8 +314,8 @@ func startHealthchecks(ctx context.Context, cfg config.Config) {
 // treat any exit as fault and tear down.
 func waitForExit(ctx context.Context, cancel context.CancelFunc, fw *process.Handle) {
 	select {
-	case err := <-fw.Done():
-		logf("gvforwarder exited: %v (forever-loop should not exit voluntarily)", err)
+	case <-fw.Done():
+		logf("gvforwarder exited: %v (forever-loop should not exit voluntarily)", fw.Wait())
 	case <-ctx.Done():
 		logf("ctx cancelled, waiting for forwarder to exit")
 	}

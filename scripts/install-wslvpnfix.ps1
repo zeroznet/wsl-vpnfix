@@ -20,12 +20,20 @@
 [CmdletBinding()]
 param(
     [string]$Tag = 'latest',
+    # WSL's own accepted charset; also keeps the name safe inside the
+    # Task Scheduler -Command string and the uninstall echo lines.
+    [ValidatePattern('^[A-Za-z0-9._-]+$')]
     [string]$DistroName = 'wsl-vpnfix',
     [string]$InstallDir = "$env:LOCALAPPDATA\wsl-vpnfix",
     [switch]$Force,
     [switch]$NoAutoStart
 )
 
+# Under `iwr | iex` the script body runs in the host shell's scope, so
+# preference changes would otherwise leak into the user's session; the
+# finally at the bottom restores both.
+$SavedErrorActionPreference = $ErrorActionPreference
+$SavedProgressPreference = $ProgressPreference
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
@@ -36,7 +44,7 @@ $DlBase = "https://github.com/$Repo/releases/download"
 function Write-Step { param($Msg) Write-Host "==> $Msg" -ForegroundColor Cyan }
 function Write-Ok   { param($Msg) Write-Host "    $Msg" -ForegroundColor Green }
 function Write-Warn { param($Msg) Write-Host "!!! $Msg" -ForegroundColor Yellow }
-function Die        { param($Msg) Write-Host "*** $Msg" -ForegroundColor Red; throw $Msg }
+function Die        { param($Msg) throw $Msg }
 
 # When launched via `iwr ... | iex`, the script body runs in the host shell
 # scope. A bare `exit` would close that shell. Wrapping the body in try/catch
@@ -97,7 +105,7 @@ try {
     }
     Write-Ok "sha256=$actual"
 
-    $existing = (& wsl.exe --list --quiet) 2>$null |
+    $existing = (& wsl.exe --list --quiet) |
         ForEach-Object { ($_ -replace "`0", '').Trim() } |
         Where-Object { $_ -eq $DistroName }
     if ($existing) {
@@ -108,7 +116,7 @@ try {
             if ($reply -notmatch '^[Yy]') { Write-Warn 'aborted by user'; return }
         }
         Write-Step "Terminating + unregistering existing '$DistroName'"
-        & wsl.exe --terminate $DistroName 2>$null | Out-Null
+        & wsl.exe --terminate $DistroName | Out-Null
         & wsl.exe --unregister $DistroName
         if ($LASTEXITCODE -ne 0) { Die "wsl --unregister failed (exit $LASTEXITCODE)" }
     }
@@ -165,7 +173,7 @@ if ($NoAutoStart) {
 }
 
 Start-Sleep -Seconds 3
-$running = (& wsl.exe --list --running --quiet) 2>$null |
+$running = (& wsl.exe --list --running --quiet) |
     ForEach-Object { ($_ -replace "`0", '').Trim() } |
     Where-Object { $_ -eq $DistroName }
 if ($running) {
@@ -190,8 +198,15 @@ Write-Host "    Remove-Item -Recurse ""$InstallDir""" -ForegroundColor Green
 Write-Host ''
 
 } catch {
-    # Die already printed the red message; swallow the exception so we don't
-    # fall through to PowerShell's default error display, which would also
-    # exit the iex-hosting shell. `return` exits the script block cleanly.
+    # One print path for every terminating error — Die's throws AND any
+    # cmdlet failure under $ErrorActionPreference='Stop' (download, hash,
+    # scheduled-task registration). Without this, non-Die failures ended
+    # the script with zero output. `return` exits the script block cleanly
+    # instead of falling through to PowerShell's default error display,
+    # which would also exit the iex-hosting shell.
+    Write-Host "*** $($_.Exception.Message)" -ForegroundColor Red
     return
+} finally {
+    $ErrorActionPreference = $SavedErrorActionPreference
+    $ProgressPreference = $SavedProgressPreference
 }

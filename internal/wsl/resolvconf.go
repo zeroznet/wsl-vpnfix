@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/zeroznet/wsl-vpnfix/internal/config"
 )
 
 // WSL2GatewayIP returns the WSL2 NAT gateway IP. It reads
@@ -60,16 +62,25 @@ func wsl2GatewayIPFrom(path string) (string, error) {
 		if !strings.HasPrefix(line, "nameserver ") {
 			continue
 		}
-		ns := strings.TrimSpace(strings.TrimPrefix(line, "nameserver "))
-		if ns != "" {
-			firstNS = ns
+		if fields := strings.Fields(strings.TrimPrefix(line, "nameserver ")); len(fields) > 0 {
+			firstNS = fields[0]
 		}
+	}
+	if err := sc.Err(); err != nil {
+		return "", fmt.Errorf("%s: read: %w", path, err)
 	}
 	if !hasMarker {
 		return "", fmt.Errorf("%s: WSL auto-generated marker absent (file appears user-managed)", path)
 	}
 	if firstNS == "" {
 		return "", fmt.Errorf("%s: no nameserver line found", path)
+	}
+	// The env-override path validates via config.ValidateIPv4; hold the
+	// autodetected value to the same bar. An IPv6 nameserver (mirrored /
+	// dnsTunneling setups) or a malformed line must fail here, with the
+	// override hint, not later inside netfilter rule construction.
+	if err := config.ValidateIPv4(firstNS); err != nil {
+		return "", fmt.Errorf("%s: nameserver %q is not a usable IPv4 gateway (set WSL2_GATEWAY_IP to override): %w", path, firstNS, err)
 	}
 	return firstNS, nil
 }

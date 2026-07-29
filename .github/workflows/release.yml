@@ -32,12 +32,6 @@ jobs:
             exit 1
           fi
 
-      - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
-        with:
-          go-version-file: go.mod
-          cache: true
-
       - name: Strip leading 'v' for pack.sh
         id: version
         run: |
