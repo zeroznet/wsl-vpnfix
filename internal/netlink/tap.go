@@ -55,25 +55,31 @@ func CreateTap(name, mac string) error {
 		_ = vnl.LinkDel(tap)
 		return fmt.Errorf("set hardware addr: %w", err)
 	}
-	// The netlink ACK for LinkSetHardwareAddr can race the link cache: an
-	// immediate LinkByName may still report the kernel-assigned random MAC
-	// under load (seen twice in CI). Verify the MAC took, retrying briefly,
-	// so a later CreateTap never mistakes our tap for a foreign one. The
-	// LinkDel on both failure paths above and here keeps a half-configured
-	// tap from permanently poisoning the idempotency check at the top.
+	// Something can overwrite a fresh tap's MAC concurrently with our set:
+	// a fresh RTM_GETLINK dump has been observed reporting a foreign MAC
+	// 40ms after a successful LinkSetHardwareAddr ACK on loaded CI runners
+	// (runs 25657040859, 30414936822, 30500892503 — consistent with udev
+	// MACAddressPolicy re-assignment on link creation). Read back and
+	// RE-ISSUE the set until it sticks, so a later CreateTap never
+	// mistakes our tap for a foreign one. The LinkDel on every failure
+	// path keeps a half-configured tap from permanently poisoning the
+	// idempotency check at the top.
 	for attempt := 0; ; attempt++ {
 		got, gotErr := vnl.LinkByName(name)
 		if gotErr == nil && got.Attrs().HardwareAddr.String() == hw.String() {
 			return nil
 		}
-		if attempt >= 2 {
+		if attempt >= 4 {
 			_ = vnl.LinkDel(tap)
 			if gotErr != nil {
 				return fmt.Errorf("verify hardware addr: %w", gotErr)
 			}
 			return fmt.Errorf("verify hardware addr: tap %q reports %s, want %s", name, got.Attrs().HardwareAddr, hw)
 		}
-		time.Sleep(20 * time.Millisecond)
+		if gotErr == nil {
+			_ = vnl.LinkSetHardwareAddr(got, hw)
+		}
+		time.Sleep(time.Duration(20*(attempt+1)) * time.Millisecond)
 	}
 }
 
