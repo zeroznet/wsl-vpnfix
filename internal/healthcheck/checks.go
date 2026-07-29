@@ -6,7 +6,6 @@ package healthcheck
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -23,14 +22,10 @@ type Result struct {
 }
 
 // ProbeHTTP does a GET against url with the given timeout. Any URL scheme
-// supported by net/http works (http://, https://). If tlsConf is non-nil it
-// is used to override default TLS config — pass nil for system-roots TLS.
-func ProbeHTTP(ctx context.Context, url string, timeout time.Duration, tlsConf *tls.Config) Result {
-	cli := &http.Client{Timeout: timeout}
-	if tlsConf != nil {
-		cli.Transport = &http.Transport{TLSClientConfig: tlsConf}
-	}
-	return probeHTTPWithClient(ctx, url, timeout, cli)
+// supported by net/http works (http://, https://); TLS verifies against
+// system roots.
+func ProbeHTTP(ctx context.Context, url string, timeout time.Duration) Result {
+	return probeHTTPWithClient(ctx, url, timeout, &http.Client{Timeout: timeout})
 }
 
 func probeHTTPWithClient(ctx context.Context, url string, timeout time.Duration, cli *http.Client) Result {
@@ -60,9 +55,12 @@ func ProbeDNS(ctx context.Context, host, server string, timeout time.Duration) R
 	r := &net.Resolver{}
 	if server != "" {
 		r.PreferGo = true
-		r.Dial = func(ctx context.Context, _, _ string) (net.Conn, error) {
+		// Honor the requested network: the Go resolver retries a truncated
+		// UDP answer over "tcp", and handing it a UDP PacketConn for that
+		// retry silently repeats the UDP round trip and fails the lookup.
+		r.Dial = func(ctx context.Context, network, _ string) (net.Conn, error) {
 			d := net.Dialer{Timeout: timeout}
-			return d.DialContext(ctx, "udp", net.JoinHostPort(server, "53"))
+			return d.DialContext(ctx, network, net.JoinHostPort(server, "53"))
 		}
 	}
 	c, cancel := context.WithTimeout(ctx, timeout)

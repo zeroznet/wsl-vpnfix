@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
-	"strings"
 )
 
 var (
@@ -45,14 +44,12 @@ func ValidateAbsolutePath(s string) error {
 	if !absPathRe.MatchString(s) {
 		return fmt.Errorf("invalid absolute path: %q", s)
 	}
+	// filepath.Clean on a rooted path eliminates every `.` and `..`
+	// segment, so cleaned == s proves none exist — this equality IS the
+	// traversal check.
 	cleaned := filepath.Clean(s)
 	if cleaned != s {
 		return fmt.Errorf("path must be in cleaned form (no `.` or `..` segments): %q", s)
-	}
-	for _, seg := range strings.Split(s, "/") {
-		if seg == ".." || seg == "." {
-			return fmt.Errorf("path contains traversal segment: %q", s)
-		}
 	}
 	return nil
 }

@@ -32,6 +32,12 @@ if [ $# -eq 0 ]; then
     exit 2
 fi
 
+if ! podman image exists "${IMAGE}"; then
+    echo "dev image missing; build it first:" >&2
+    echo "  podman build -t ${IMAGE} -f ${PROJECT_DIR}/dev/Containerfile ${PROJECT_DIR}/dev" >&2
+    exit 1
+fi
+
 # shellcheck disable=SC2086
 exec podman run --rm \
     -v "${PROJECT_DIR}:/work:Z" \

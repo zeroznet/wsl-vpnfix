@@ -145,7 +145,7 @@ Verify it's up:
 
 ```powershell
 wsl -l -v                                    # wsl-vpnfix should show 'Running'
-wsl -d Ubuntu -- curl -sI https://1.1.1.1   # expect HTTP/2 200
+wsl -d Ubuntu -- curl -sI https://1.1.1.1   # expect HTTP/2 301 (Cloudflare redirect); any HTTP response = bridge works
 ```
 
 Manual control, if you ever need it:

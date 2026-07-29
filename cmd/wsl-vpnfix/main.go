@@ -232,7 +232,6 @@ func installNATRules(td *teardown, cfg config.Config, wsl2GW string) error {
 		WSL2GatewayIP:   wsl2GW,
 		VpnkitGatewayIP: config.VpnkitGatewayIP,
 		VpnkitHostIP:    config.VpnkitHostIP,
-		VpnkitLocalCIDR: config.VpnkitLocalCIDR,
 		TapName:         cfg.TapName,
 	})
 	if err != nil {
@@ -259,21 +258,15 @@ func spawnGvforwarder(ctx context.Context, cfg config.Config) (*process.Handle, 
 		logf("gvproxy.exe staged: %s -> %s", cfg.GvproxyPath, stagedExe)
 		cfg.GvproxyPath = stagedExe
 	}
-	configWinPath, err := stageGvproxyConfig()
-	if err != nil {
-		return nil, fmt.Errorf("stage gvproxy config: %w", err)
-	}
-	logf("gvproxy config staged: %s", configWinPath)
-
 	debugFlag := boolStr(cfg.Debug)
-	// gvproxy v0.8.8 silently ignored -listen-stdio (fixed in v0.8.9; the
-	// workaround stays until the post-smoke removal PR — see gvproxyYAML in
-	// stage_exe.go); we route everything through -config instead,
-	// where interfaces.stdio is set in YAML. -ssh-port is also ignored in
-	// config-file mode (a warning is logged), so we drop it. url.Values.Encode
-	// handles the colon and backslashes in the Windows config path.
+	// listen-stdio=accept starts gvproxy's stdio bridge (the v0.8.8 CLI
+	// wiring regression is fixed since v0.8.9, so no -config YAML detour
+	// is needed anymore); ssh-port=-1 disables default mode's SSH listener
+	// on 127.0.0.1:2222 (audit F-011). gvforwarder reformats these query
+	// params into -key=value flags for the spawned .exe.
 	q := url.Values{}
-	q.Set("config", configWinPath)
+	q.Set("listen-stdio", "accept")
+	q.Set("ssh-port", "-1")
 	q.Set("debug", debugFlag)
 	stdioURL := fmt.Sprintf("stdio:%s?%s", cfg.GvproxyPath, q.Encode())
 	spec := process.Spec{
@@ -306,7 +299,7 @@ func startHealthchecks(ctx context.Context, cfg config.Config) {
 		case <-time.After(2 * time.Second):
 		}
 		logf("health: %v", healthcheck.ProbeDNS(ctx, cfg.CheckHost, cfg.CheckDNS, 3*time.Second))
-		logf("health: %v", healthcheck.ProbeHTTP(ctx, "https://"+cfg.CheckHost, 5*time.Second, nil))
+		logf("health: %v", healthcheck.ProbeHTTP(ctx, "https://"+cfg.CheckHost, 5*time.Second))
 	}()
 }
 
@@ -315,8 +308,8 @@ func startHealthchecks(ctx context.Context, cfg config.Config) {
 // treat any exit as fault and tear down.
 func waitForExit(ctx context.Context, cancel context.CancelFunc, fw *process.Handle) {
 	select {
-	case err := <-fw.Done():
-		logf("gvforwarder exited: %v (forever-loop should not exit voluntarily)", err)
+	case <-fw.Done():
+		logf("gvforwarder exited: %v (forever-loop should not exit voluntarily)", fw.Wait())
 	case <-ctx.Done():
 		logf("ctx cancelled, waiting for forwarder to exit")
 	}

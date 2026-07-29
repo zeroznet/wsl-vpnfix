@@ -14,7 +14,6 @@ func validParams() Params {
 		WSL2GatewayIP:   "172.20.16.1",
 		VpnkitGatewayIP: "192.168.127.1",
 		VpnkitHostIP:    "192.168.127.254",
-		VpnkitLocalCIDR: "192.168.127.0/24",
 		TapName:         "wsltap",
 	}
 }
@@ -43,7 +42,6 @@ func TestBuildRuleSet_RejectsInvalidInputs(t *testing.T) {
 		{"missing vpnkit gateway", func() Params { p := validParams(); p.VpnkitGatewayIP = ""; return p }()},
 		{"missing host IP", func() Params { p := validParams(); p.VpnkitHostIP = ""; return p }()},
 		{"missing tap name", func() Params { p := validParams(); p.TapName = ""; return p }()},
-		{"missing CIDR", func() Params { p := validParams(); p.VpnkitLocalCIDR = ""; return p }()},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -84,7 +82,7 @@ func TestBuildRuleSet_MasqueradeScopedToTap(t *testing.T) {
 	for _, r := range rs.Rules {
 		if r.Action == "masquerade" {
 			assert.Equal(t, "wsltap", r.OutIface)
-			assert.Empty(t, r.MatchSrcCIDR, "masquerade must NOT be scoped to a source CIDR")
+			assert.Empty(t, r.MatchDst, "masquerade must match on oifname only, no address scope")
 			gotMasq = true
 		}
 	}

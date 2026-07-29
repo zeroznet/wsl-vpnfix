@@ -18,7 +18,6 @@ type Params struct {
 	WSL2GatewayIP   string
 	VpnkitGatewayIP string
 	VpnkitHostIP    string
-	VpnkitLocalCIDR string
 	TapName         string
 }
 
@@ -30,16 +29,15 @@ type Chain struct {
 // are produced when this rule is installed; this layer is the unit
 // of test and audit.
 type Rule struct {
-	DescTag      string // human-readable tag for tests/logs (e.g. "dns-tcp")
-	Chain        string // "prerouting" | "output" | "postrouting"
-	MatchSrcCIDR string // optional, e.g. "192.168.127.0/24" — saddr scope
-	MatchDst     string // optional, IP or empty
-	MatchProto   string // "tcp" | "udp" | ""
-	MatchPort    int    // 0 if not used
-	OutIface     string // for postrouting masquerade
-	Action       string // "dnat" | "masquerade"
-	DNATTo       string // dnat target IP
-	DNATPort     int    // dnat target port (0 = preserve)
+	DescTag    string // human-readable tag for tests/logs (e.g. "dns-tcp")
+	Chain      string // "prerouting" | "output" | "postrouting"
+	MatchDst   string // optional, IP or empty
+	MatchProto string // "tcp" | "udp" | ""
+	MatchPort  int    // 0 if not used
+	OutIface   string // for postrouting masquerade
+	Action     string // "dnat" | "masquerade"
+	DNATTo     string // dnat target IP
+	DNATPort   int    // dnat target port (0 = preserve)
 }
 
 type RuleSet struct {
@@ -57,8 +55,6 @@ func BuildRuleSet(p Params) (RuleSet, error) {
 		return RuleSet{}, fmt.Errorf("BuildRuleSet: VpnkitGatewayIP is required")
 	case p.VpnkitHostIP == "":
 		return RuleSet{}, fmt.Errorf("BuildRuleSet: VpnkitHostIP is required")
-	case p.VpnkitLocalCIDR == "":
-		return RuleSet{}, fmt.Errorf("BuildRuleSet: VpnkitLocalCIDR is required")
 	case p.TapName == "":
 		return RuleSet{}, fmt.Errorf("BuildRuleSet: TapName is required")
 	}
@@ -174,27 +170,6 @@ func chainAttrs(name string) (*nft.ChainHook, *nft.ChainPriority, bool) {
 
 func buildExprs(r Rule) ([]expr.Any, error) {
 	var out []expr.Any
-
-	if r.MatchSrcCIDR != "" {
-		_, cidr, err := net.ParseCIDR(r.MatchSrcCIDR)
-		if err != nil {
-			return nil, fmt.Errorf("invalid MatchSrcCIDR: %q: %w", r.MatchSrcCIDR, err)
-		}
-		network := cidr.IP.To4()
-		if network == nil {
-			return nil, fmt.Errorf("MatchSrcCIDR must be IPv4: %q", r.MatchSrcCIDR)
-		}
-		mask := []byte(cidr.Mask)
-		if len(mask) != 4 {
-			return nil, fmt.Errorf("MatchSrcCIDR mask must be 4 bytes (IPv4): %q", r.MatchSrcCIDR)
-		}
-		out = append(out,
-			// Source IP = bytes 12..16 of the IPv4 network header.
-			&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseNetworkHeader, Offset: 12, Len: 4},
-			&expr.Bitwise{SourceRegister: 1, DestRegister: 1, Len: 4, Mask: mask, Xor: []byte{0, 0, 0, 0}},
-			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: network},
-		)
-	}
 
 	if r.MatchDst != "" {
 		ip := net.ParseIP(r.MatchDst).To4()

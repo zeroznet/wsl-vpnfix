@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"time"
 
 	vnl "github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
@@ -47,12 +48,33 @@ func CreateTap(name, mac string) error {
 	// `ip link set dev $TAP_NAME address $TAP_MAC_ADDR`.
 	link, err := vnl.LinkByName(name)
 	if err != nil {
+		_ = vnl.LinkDel(tap)
 		return fmt.Errorf("link by name (post-add): %w", err)
 	}
 	if err := vnl.LinkSetHardwareAddr(link, hw); err != nil {
+		_ = vnl.LinkDel(tap)
 		return fmt.Errorf("set hardware addr: %w", err)
 	}
-	return nil
+	// The netlink ACK for LinkSetHardwareAddr can race the link cache: an
+	// immediate LinkByName may still report the kernel-assigned random MAC
+	// under load (seen twice in CI). Verify the MAC took, retrying briefly,
+	// so a later CreateTap never mistakes our tap for a foreign one. The
+	// LinkDel on both failure paths above and here keeps a half-configured
+	// tap from permanently poisoning the idempotency check at the top.
+	for attempt := 0; ; attempt++ {
+		got, gotErr := vnl.LinkByName(name)
+		if gotErr == nil && got.Attrs().HardwareAddr.String() == hw.String() {
+			return nil
+		}
+		if attempt >= 2 {
+			_ = vnl.LinkDel(tap)
+			if gotErr != nil {
+				return fmt.Errorf("verify hardware addr: %w", gotErr)
+			}
+			return fmt.Errorf("verify hardware addr: tap %q reports %s, want %s", name, got.Attrs().HardwareAddr, hw)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 // AddAddr assigns IPv4 addr/prefixLen to the link. Idempotent.

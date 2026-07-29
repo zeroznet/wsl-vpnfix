@@ -18,7 +18,7 @@ func TestProbeHTTP_OK(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	res := ProbeHTTP(context.Background(), srv.URL, 2*time.Second, nil)
+	res := ProbeHTTP(context.Background(), srv.URL, 2*time.Second)
 	assert.True(t, res.OK)
 	assert.Equal(t, 200, res.StatusCode)
 }
@@ -31,7 +31,7 @@ func TestProbeHTTP_TLS(t *testing.T) {
 
 	// httptest's TLS server uses a self-signed cert. The test server exposes
 	// a Client() with that cert already trusted; we use it via the internal
-	// probe entrypoint. Production callers pass nil tlsConf and rely on
+	// probe entrypoint. Production callers go through ProbeHTTP and rely on
 	// system root CAs.
 	res := probeHTTPWithClient(context.Background(), srv.URL, 2*time.Second, srv.Client())
 	assert.True(t, res.OK)
@@ -39,7 +39,7 @@ func TestProbeHTTP_TLS(t *testing.T) {
 }
 
 func TestProbeHTTP_Timeout(t *testing.T) {
-	res := ProbeHTTP(context.Background(), "http://127.0.0.1:1", 200*time.Millisecond, nil)
+	res := ProbeHTTP(context.Background(), "http://127.0.0.1:1", 200*time.Millisecond)
 	assert.False(t, res.OK)
 	assert.NotEmpty(t, res.Err)
 }
