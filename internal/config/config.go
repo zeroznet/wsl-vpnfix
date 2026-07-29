@@ -11,7 +11,7 @@ import (
 
 // VpnkitGatewayIP, VpnkitHostIP, VpnkitLocalIP, VpnkitLocalCIDR, and
 // TapPrefixLen are package-level constants — not env-overridable — because
-// gvproxy v0.8.8 has the host IP (192.168.127.254) hardcoded in its DNS
+// gvproxy v0.8.9 has the host IP (192.168.127.254) hardcoded in its DNS
 // records for `host.containers.internal` and the .2:5a:94:ef:e4:0c:ee
 // mapping hardcoded in its DHCP static lease map
 // (cmd/gvproxy/config.go:22-23, 372). Those defaults only apply in the
