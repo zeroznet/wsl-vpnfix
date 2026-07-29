@@ -59,9 +59,9 @@
   "customManagers": [
     {
       "customType": "regex",
-      "fileMatch": [
-        "^dev/Containerfile$",
-        "^build/Dockerfile\\.rootfs$"
+      "managerFilePatterns": [
+        "/^dev/Containerfile$/",
+        "/^build/Dockerfile\\.rootfs$/"
       ],
       "matchStrings": [
         "FROM\\s+alpine@(?<currentDigest>sha256:[a-f0-9]{64})"
@@ -73,9 +73,9 @@
     },
     {
       "customType": "regex",
-      "fileMatch": [
-        "^dev/Containerfile$",
-        "^build/Dockerfile\\.rootfs$"
+      "managerFilePatterns": [
+        "/^dev/Containerfile$/",
+        "/^build/Dockerfile\\.rootfs$/"
       ],
       "matchStrings": [
         "go=(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+-r[0-9]+)"
@@ -87,8 +87,8 @@
     },
     {
       "customType": "regex",
-      "fileMatch": [
-        "^build/upstream-pins\\.yaml$"
+      "managerFilePatterns": [
+        "/^build/upstream-pins\\.yaml$/"
       ],
       "matchStrings": [
         "tag:\\s+(?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)"
