@@ -118,7 +118,9 @@ When the rebuild touches an external SDK or HTTP API, the workspace's `nanoconte
 
 **v0.2.2** as of 2026-07-29. gvisor-tap-vsock pin bumped v0.8.8 → v0.8.9 (PR #34): upstream fixes the `--listen-stdio` wiring the staged-YAML workaround covers, plus a udp_proxy tight loop. Pin-only per GV-D-1 — the workaround stays until the post-smoke removal PR (TODO Backlog); binary otherwise identical to v0.2.1 except `-X main.version=v0.2.2`. Also in this window: toolchain refresh alpine 3.23.5 + go 1.25.10 (PR #30, unbroke the release build after alpine dropped the 1.25.9-r0 apk), Renovate app actually installed + config repaired (PR #32), Dependabot x/net 0.55.0 merged (PR #29, closed GHSA-5cv4-jp36-h3mw). Smoke: `docs/smoke-2026-07-29.md` (home PC — installer upgrade, routing via wsltap, HTTPS/DNS through the bridge); the VPN-bypass path is byte-identical to v0.2.1 (spawn contract verified unchanged), so `docs/smoke-2026-05-10-workpc-vpn.md` remains the reference for that property.
 
-**Current release: `v0.2.3`** as of 2026-07-30. Sweep-fix release, everything from the 2026-07-26 review sweep landed in one PR, two commits. Commit 1 (fixes + cleanup): process.Handle switched to close-based done channel (gvforwarder crash no longer stalls teardown 10 s with a phantom timeout log), group-wide SIGKILL escalation after the 5 s grace, tap orphan cleanup + MAC verify-loop in `CreateTap` (fixes the recurring CI flake — TODO item deleted), autodetected resolv.conf nameserver now validated as IPv4 with the `WSL2_GATEWAY_IP` hint at detection time, DNS probe honors the resolver's TCP fallback, dead code dropped (`MatchSrcCIDR`/`VpnkitLocalCIDR`, validators traversal loop, `ProbeHTTP` tlsConf param, release.yml setup-go step), installer prints non-`Die` errors + validates `-DistroName` + restores host-shell preferences, pack.sh re-tightens `/etc/shadow` to 0640 and states the honest reproducibility guarantee, dev/run.sh guards on the missing dev image, README verify line expects 301. Commit 2 (behavior): staged-YAML gvproxy workaround removed — stdio URL back to `listen-stdio=accept` + `ssh-port=-1` (F-017 closed, F-011 note), `gvproxy.yaml` no longer staged to `C:\Users\Public`; new F-018 records the remaining Public-dir `.exe` staging surface. Runtime behavior change not yet smoked on a real WSL host at release time; rollback = reinstall v0.2.2 via `-Tag v0.2.2`.
+**v0.2.3** as of 2026-07-30. Sweep-fix release, everything from the 2026-07-26 review sweep landed in one PR, two commits. Commit 1 (fixes + cleanup): process.Handle switched to close-based done channel (gvforwarder crash no longer stalls teardown 10 s with a phantom timeout log), group-wide SIGKILL escalation after the 5 s grace, tap orphan cleanup + MAC verify-loop in `CreateTap` (fixes the recurring CI flake — TODO item deleted), autodetected resolv.conf nameserver now validated as IPv4 with the `WSL2_GATEWAY_IP` hint at detection time, DNS probe honors the resolver's TCP fallback, dead code dropped (`MatchSrcCIDR`/`VpnkitLocalCIDR`, validators traversal loop, `ProbeHTTP` tlsConf param, release.yml setup-go step), installer prints non-`Die` errors + validates `-DistroName` + restores host-shell preferences, pack.sh re-tightens `/etc/shadow` to 0640 and states the honest reproducibility guarantee, dev/run.sh guards on the missing dev image, README verify line expects 301. Commit 2 (behavior): staged-YAML gvproxy workaround removed — stdio URL back to `listen-stdio=accept` + `ssh-port=-1` (F-017 closed, F-011 note), `gvproxy.yaml` no longer staged to `C:\Users\Public`; new F-018 records the remaining Public-dir `.exe` staging surface. Runtime behavior change not yet smoked on a real WSL host at release time; rollback = reinstall v0.2.2 via `-Tag v0.2.2`.
+
+**Current release: `v0.2.4`** as of 2026-10-04. Security toolchain refresh. Go 1.25 went end of life when Go 1.27 shipped, and alpine 3.23's community repo froze apk go at 1.25.10, so v0.2.3 linked 7 reachable stdlib vulns (GO-2026-6218/6090/5972/5856/5039/5037/5026, all healthcheck-path) with no patch path left; nothing alerted because ci.yml's govulncheck is non-blocking and only runs on PR/push, Dependabot does not cover the stdlib, and Renovate was fenced to the 3.23 line. Fix: alpine 3.24.2 + apk go 1.26.8 across all stages, go.mod `go 1.26.8`, full module refresh (incl. retracted mdlayher/netlink v1.11.1 → v1.11.2, x/net 0.59.0), Renovate fence 3.23 → 3.24, tzdata in the rootfs, CI builder-stage build (catches a go.mod directive ahead of the apk toolchain, which Renovate PR #39 would have shipped), and new `vulnwatch.yml`: weekly strict govulncheck against the shipped toolchain plus a Go end-of-life check, emailing on failure (F-016 updated).
 
 ## Repo layout
 
@@ -128,8 +130,8 @@ wsl-vpnfix/
 ├── README.md                                       ← public product page (nanocontext-style; centered logo, badges, TOC)
 ├── LICENSE                                         ← BSD-2-Clause
 ├── TODO.md                                         ← open work tracker (read this before starting any session)
-├── renovate.json                                   ← 4 streams: gomod, alpine-3.23 digest + go-apk lockstep, gvisor-tap-vsock tag (sha256 manual, CI-guarded), github-actions
-├── go.mod, go.sum                                  ← module github.com/zeroznet/wsl-vpnfix, go 1.25.10
+├── renovate.json                                   ← 4 streams: gomod, alpine-3.24 digest + go-apk lockstep, gvisor-tap-vsock tag (sha256 manual, CI-guarded), github-actions
+├── go.mod, go.sum                                  ← module github.com/zeroznet/wsl-vpnfix, go 1.26.8
 ├── cmd/wsl-vpnfix/                                 ← orchestrator main + buildEnv test
 ├── internal/
 │   ├── config/                                     ← Config struct, validators, env loader
@@ -147,11 +149,12 @@ wsl-vpnfix/
 ├── scripts/
 │   └── install-wslvpnfix.ps1                       ← Windows-side PowerShell installer (download + SHA-verify + wsl --import + Task Scheduler At-logon)
 ├── dev/
-│   ├── Containerfile                               ← Alpine 3.23.5 (digest-pinned) + Go 1.25.10 dev image
+│   ├── Containerfile                               ← Alpine 3.24.2 (digest-pinned) + Go 1.26.8 dev image
 │   └── run.sh                                      ← podman wrapper with persistent caches; --integration adds NET_ADMIN+NET_RAW+/dev/net/tun
 ├── .github/workflows/
-│   ├── ci.yml                                      ← gofmt, vet, mod-verify, govulncheck (non-blocking by design — apk go trails upstream, see TODO.md), unit + integration, build verify, upstream-pins verify, race
-│   └── release.yml                                 ← tag-triggered (^vN.N.N$); runs build/pack.sh; uploads tarball + SHA256SUMS + upstream-pins.yaml to GH Release
+│   ├── ci.yml                                      ← gofmt, vet, mod-verify, govulncheck (non-blocking by design — apk go trails upstream), unit + integration, build verify, upstream-pins verify, release builder-stage verify, race
+│   ├── release.yml                                 ← tag-triggered (^vN.N.N$); runs build/pack.sh; uploads tarball + SHA256SUMS + upstream-pins.yaml to GH Release
+│   └── vulnwatch.yml                               ← weekly + toolchain PRs: strict govulncheck on the shipped apk go + Go EOL check; emails on failure
 ├── out/                                            ← gitignored; pack.sh write target
 └── docs/
     ├── smoke-2026-05-10.md                         ← home-PC bridge correctness validation

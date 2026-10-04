@@ -14,7 +14,7 @@
 # Outputs:
 #   out/wsl-vpnfix-<version>.tar.gz
 #
-# A clean rebuild from the same inputs AND the same Alpine v3.23 package
+# A clean rebuild from the same inputs AND the same Alpine v3.24 package
 # repository state produces a bit-identical tarball SHA-256. The fetcher
 # and final stages install unpinned apk packages (curl, nftables,
 # iproute2, ca-certificates), so an Alpine package update between builds
