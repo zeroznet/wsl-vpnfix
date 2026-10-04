@@ -9,14 +9,14 @@
 # ---- Stage 1: Go builder ----
 # Same Alpine digest as dev/Containerfile and the final stage so the build
 # tree and the runtime tree share one pinned base. Bump via Renovate PR.
-FROM alpine@sha256:fd791d74b68913cbb027c6546007b3f0d3bc45125f797758156952bc2d6daf40 AS builder
+FROM alpine@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS builder
 
 ARG VERSION=dev
 ARG COMMIT=none
 ARG SOURCE_DATE_EPOCH=0
 
 RUN apk add --no-cache \
-        go=1.25.10-r0 \
+        go=1.26.8-r0 \
         git \
         ca-certificates
 
@@ -43,7 +43,7 @@ RUN SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH}" go build \
         ./cmd/wsl-vpnfix
 
 # ---- Stage 2: Upstream fetcher ----
-FROM alpine@sha256:fd791d74b68913cbb027c6546007b3f0d3bc45125f797758156952bc2d6daf40 AS fetcher
+FROM alpine@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS fetcher
 
 ARG GVTV_TAG=v0.8.9
 ARG GVTV_GVFORWARDER_SHA256
@@ -65,12 +65,13 @@ RUN set -eu; \
     chmod 0644 gvproxy-windowsgui.exe
 
 # ---- Stage 3: Final rootfs ----
-FROM alpine@sha256:fd791d74b68913cbb027c6546007b3f0d3bc45125f797758156952bc2d6daf40 AS final
+FROM alpine@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS final
 
 RUN apk add --no-cache \
         nftables \
         iproute2 \
         ca-certificates \
+        tzdata \
     && rm -rf /var/cache/apk/* /var/log/* /tmp/* \
     && rm -f /usr/bin/wget
 

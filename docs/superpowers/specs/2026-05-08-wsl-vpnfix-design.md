@@ -146,7 +146,7 @@ See `docs/THREAT-MODEL.md`. Lifted from this section on 2026-05-10; this header 
 
 ```
 Source              ← this repo, git tag is the source of truth
-Go toolchain        ← pinned in go.mod via `toolchain go1.25.0` (or current stable at v1.0; Go has no LTS, follow upstream stable)
+Go toolchain        ← apk-pinned `go=X.Y.Z-rN` in build/Dockerfile.rootfs, go.mod `go` directive in lockstep; must stay on an upstream-supported Go minor (vulnwatch.yml enforces)
 Alpine rootfs base  ← FROM alpine@sha256:<digest>  (pinned, not :latest, not :3.22)
 gvforwarder         ← https://github.com/containers/gvisor-tap-vsock/releases/download/<tag>/gvforwarder
 gvproxy-windowsgui  ← https://github.com/containers/gvisor-tap-vsock/releases/download/<tag>/gvproxy-windowsgui.exe
@@ -234,11 +234,12 @@ Workflows:
 
 ```
 .github/workflows/
-├── ci.yml       # PR: gofmt -l ., go vet ./... + go vet -tags=integration ./..., go mod verify, govulncheck ./..., unit + integration tests, build verify
-└── release.yml  # tag-triggered (^vN.N.N$): runs build/pack.sh, uploads tarball + SHA256SUMS + upstream-pins.yaml to GH Release
+├── ci.yml        # PR: gofmt -l ., go vet ./... + go vet -tags=integration ./..., go mod verify, govulncheck ./..., unit + integration tests, build verify, upstream-pins + release builder-stage verify
+├── release.yml   # tag-triggered (^vN.N.N$): runs build/pack.sh, uploads tarball + SHA256SUMS + upstream-pins.yaml to GH Release
+└── vulnwatch.yml # weekly + toolchain PRs: strict govulncheck against the shipped apk Go version, Go end-of-life check; emails on failure
 ```
 
-`go mod verify` runs before any compilation and aborts the job if any cached module's content doesn't match the hash in `go.sum`. `govulncheck ./...` runs against the resolved module graph; currently non-blocking pending alpine apk shipping Go 1.25.10 (tracked in `TODO.md` Backlog). Together these substitute for vendoring (see 4.1 pinning policy).
+`go mod verify` runs before any compilation and aborts the job if any cached module's content doesn't match the hash in `go.sum`. `govulncheck ./...` runs against the resolved module graph; non-blocking in `ci.yml` because apk go trails upstream security releases, strict and alerting in `vulnwatch.yml` (audit F-016). Together these substitute for vendoring (see 4.1 pinning policy).
 
 ### 4.5 Release artifacts
 

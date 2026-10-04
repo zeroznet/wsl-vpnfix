@@ -1,0 +1,70 @@
+# scripted/written by Robert Bopko (github.com/zeroznet) with Boba Bott (Claude Opus 5.5)
+
+name: vulnwatch
+
+# Strict counterpart to ci.yml's non-blocking govulncheck. Scans with the Go
+# version the release actually ships (the apk pin in build/Dockerfile.rootfs)
+# and fails on any reachable vulnerability or on a Go minor that upstream no
+# longer supports. Not a required check, so it never blocks a PR; a failed
+# scheduled run emails whoever last edited the cron line below.
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - build/Dockerfile.rootfs
+      - go.mod
+      - go.sum
+      - .github/workflows/vulnwatch.yml
+
+permissions: read-all
+
+jobs:
+  vulnwatch:
+    name: vulnwatch
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Resolve shipped Go version
+        id: shipped
+        run: |
+          set -eu
+          version=$(sed -n 's/.*go=\([0-9]*\.[0-9]*\.[0-9]*\)-r[0-9]*.*/\1/p' build/Dockerfile.rootfs | head -n 1)
+          if [ -z "${version}" ]; then
+            echo "::error::no go=X.Y.Z-rN apk pin found in build/Dockerfile.rootfs"
+            exit 1
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version: ${{ steps.shipped.outputs.version }}
+          cache: true
+
+      # go.dev's JSON feed lists only the releases upstream still supports
+      # (the two newest minors), so a missing minor means end of life.
+      - name: Shipped Go minor still supported upstream
+        env:
+          SHIPPED: ${{ steps.shipped.outputs.version }}
+        run: |
+          set -eu
+          minor=$(printf '%s\n' "${SHIPPED}" | cut -d. -f1,2)
+          supported=$(curl -fsSL 'https://go.dev/dl/?mode=json' | grep -o '"version": *"go[0-9.]*"' | grep -o 'go[0-9.]*' | sort -u)
+          if ! printf '%s\n' "${supported}" | grep -q "^go${minor}\."; then
+            echo "::error::shipped Go ${SHIPPED} is end of life; supported: $(printf '%s\n' "${supported}" | tr '\n' ' ')"
+            exit 1
+          fi
+
+      # The latest govulncheck may need a newer Go to build than the one we
+      # ship, so install it with toolchain switching on, then scan with the
+      # shipped toolchain pinned (GOTOOLCHAIN=local) so stdlib findings match
+      # what the release binary links.
+      - name: govulncheck (strict, shipped toolchain)
+        run: |
+          set -eu
+          GOTOOLCHAIN=auto go install golang.org/x/vuln/cmd/govulncheck@latest
+          GOTOOLCHAIN=local "$(go env GOPATH)/bin/govulncheck" ./...
