@@ -16,7 +16,7 @@ ARG COMMIT=none
 ARG SOURCE_DATE_EPOCH=0
 
 RUN apk add --no-cache \
-        go=1.26.8-r0 \
+        go=1.26.9-r0 \
         git \
         ca-certificates
 
