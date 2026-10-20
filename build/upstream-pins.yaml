@@ -16,7 +16,7 @@
 #   4. Re-run build/pack.sh; smoke test on a real WSL host.
 
 gvisor_tap_vsock:
-  tag: v0.8.9
+  tag: v0.9.0
   artifacts:
     gvforwarder:
       sha256: a62731c3e07e6d98b26043d236f4d03c9e2d464d75f1f3ec3670e5b2825eb6a6
