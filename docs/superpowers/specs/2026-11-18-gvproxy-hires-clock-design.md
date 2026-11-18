@@ -3,7 +3,7 @@
 # wsl-vpnfix gvproxy high-resolution clock: Design
 
 **Date:** 2026-11-18
-**Status:** Approved (option B), not started
+**Status:** Completed (PR #49, released in v0.3.0)
 **Target release:** v0.3.0
 
 ## Problem

@@ -6,8 +6,8 @@
 # Adds Go + git for the build/test workflow that does not ship.
 #
 # Track current Alpine (security tool — stale base = stale build-tool CVEs).
-# Update digest by re-pulling alpine:latest and copying the new RepoDigest;
-# bump the apk-pinned versions in lockstep.
+# Renovate bumps the digest and the apk go pin in lockstep with
+# build/Dockerfile.rootfs (fenced to the 3.24 line, see renovate.json).
 FROM alpine@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
 
 RUN apk add --no-cache \

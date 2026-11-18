@@ -336,7 +336,7 @@ Layout notes:
 | Runtime | Go orchestrator + pinned upstream `gvforwarder` + `gvproxy-windowsgui.exe` built from the pinned upstream commit with one patch |
 | Architectures | amd64 only; ARM deferred |
 | Network rules | nftables via netlink-typed Go library |
-| IP plan / subnet | Compile-time fixed at `192.168.127.0/24` (gvproxy v0.8.8 hardcodes parts of it; runtime override would only pretend to work) |
+| IP plan / subnet | Compile-time fixed at `192.168.127.0/24` (gvproxy derives its host IP from its default subnet and hardcodes the DHCP lease MAC; a runtime override on our side only would leave gvproxy on the old plan) |
 | CI | GitHub Actions (free for public repos) |
 | Signing | None; `SHA256SUMS` over GitHub TLS + tag immutability matches the audience's actual trust model |
 | Dep inventory | None as a separate artifact; `go.sum` + `apk info -L` inside the rootfs cover the dep inventory — a separate file is duplicated state |
