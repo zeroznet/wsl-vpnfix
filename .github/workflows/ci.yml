@@ -85,24 +85,30 @@ jobs:
             ./cmd/wsl-vpnfix
 
       # Mirrors build/pack.sh's awk parsing of build/upstream-pins.yaml.
-      # Runs on every CI pass so a tag-only Renovate bump (sha256 lines are
-      # maintained manually) turns the PR red here instead of breaking the
-      # release-tag build later, and continuously proves the pinned
-      # artifacts are still downloadable.
-      - name: Verify upstream pins (fetcher stage)
+      # Runs on every CI pass so a tag-only Renovate bump (commit and sha256
+      # lines are maintained manually) or a patch that no longer applies
+      # turns the PR red here instead of breaking the release-tag build
+      # later, and continuously proves the pinned sources are still
+      # reachable.
+      - name: Verify upstream pins (fetcher + gvproxy-builder stages)
         run: |
           set -eu
           PINS=build/upstream-pins.yaml
           GVTV_TAG=$(awk '/^  tag:/ { print $2; exit }' "$PINS")
           GVF_SHA=$(awk '/^    gvforwarder:/ { f=1; next } f && /sha256:/ { print $2; exit }' "$PINS")
-          GVP_SHA=$(awk '/^    gvproxy-windowsgui\.exe:/ { f=1; next } f && /sha256:/ { print $2; exit }' "$PINS")
-          test -n "$GVTV_TAG" && test -n "$GVF_SHA" && test -n "$GVP_SHA"
+          GVTV_COMMIT=$(awk '/^  commit:/ { print $2; exit }' "$PINS")
+          test -n "$GVTV_TAG" && test -n "$GVF_SHA" && test -n "$GVTV_COMMIT"
           podman build \
             --target fetcher \
             --file build/Dockerfile.rootfs \
             --build-arg "GVTV_TAG=$GVTV_TAG" \
             --build-arg "GVTV_GVFORWARDER_SHA256=$GVF_SHA" \
-            --build-arg "GVTV_GVPROXY_EXE_SHA256=$GVP_SHA" \
+            .
+          podman build \
+            --target gvproxy-builder \
+            --file build/Dockerfile.rootfs \
+            --build-arg "GVTV_TAG=$GVTV_TAG" \
+            --build-arg "GVTV_COMMIT=$GVTV_COMMIT" \
             .
 
       # setup-go above resolves the toolchain from go.mod, so it never
