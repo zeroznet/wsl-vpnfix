@@ -3,7 +3,7 @@
 # wsl-vpnfix Renovate Repair — Design
 
 **Date:** 2026-07-28
-**Status:** Approved
+**Status:** Completed (PR #32, released in v0.2.2)
 **Author:** Robert Bopko, with Claude Fable 5 assistance
 
 Makes the just-activated Renovate bot safe to obey. The Mend Renovate GitHub App was never installed during Phase B — the config sat inert for 11 weeks (zero PRs; discovered when the stale `go=1.25.9-r0` pin broke the release build, fixed in PR #30). The app is now installed (2026-07-28, Scan and Alert mode), which arms two latent config bugs found in the 2026-07-26 review sweep: a grouped "lockstep" PR that would produce an unbuildable image, and gvisor-tap-vsock tag bumps that merge green but break the next release. This PR fixes both before the bot's first scheduled run (Monday 2026-08-03).

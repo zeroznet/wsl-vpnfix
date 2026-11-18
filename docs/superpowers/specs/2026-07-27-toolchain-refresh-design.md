@@ -3,7 +3,7 @@
 # wsl-vpnfix Toolchain Refresh (Alpine 3.23.5 + Go 1.25.10) — Design
 
 **Date:** 2026-07-27
-**Status:** Approved
+**Status:** Completed (PR #30, released in v0.2.2)
 **Author:** Robert Bopko, with Claude Fable 5 assistance
 
 Unbreaks the build. Alpine's v3.23 repositories dropped the `go=1.25.9-r0` package when 1.25.10-r0 superseded it (verified against the live APKINDEX 2026-07-26), so `apk add go=1.25.9-r0` in `build/Dockerfile.rootfs` and `dev/Containerfile` now fails: the next release tag and any fresh dev-image build are broken. CI does not catch this because it provisions Go via `actions/setup-go`, never by building either Containerfile. This PR bumps the Alpine digest and Go pins in lockstep and replaces the dead "re-enable strict govulncheck" gate with an honest, permanent non-blocking posture.

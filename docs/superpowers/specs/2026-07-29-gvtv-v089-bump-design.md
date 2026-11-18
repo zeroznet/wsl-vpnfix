@@ -3,7 +3,7 @@
 # wsl-vpnfix gvisor-tap-vsock v0.8.9 Bump — Design
 
 **Date:** 2026-07-29
-**Status:** Approved
+**Status:** Completed (PR #34, released in v0.2.2)
 **Author:** Robert Bopko, with Claude Fable 5 assistance
 
 Bumps the pinned `containers/gvisor-tap-vsock` release from v0.8.8 to v0.8.9 (released 2026-05-11). v0.8.9 fixes exactly the `--listen-stdio` config-propagation regression our staged-YAML workaround exists for ("fix(gvproxy): propagate --listen-stdio flag into config"), plus a udp_proxy tight-loop bug (read returns 0 with nil err — live relevance: DNS transits gvproxy over UDP) and a `--log-file` fix. Pin-only bump: the workaround stays.
