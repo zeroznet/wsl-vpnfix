@@ -11,10 +11,10 @@ import (
 
 // VpnkitGatewayIP, VpnkitHostIP, VpnkitLocalIP, and TapPrefixLen are
 // package-level constants — not env-overridable — because
-// gvproxy v0.8.9 has the host IP (192.168.127.254) hardcoded in its DNS
-// records for `host.containers.internal` and the .2:5a:94:ef:e4:0c:ee
-// mapping hardcoded in its DHCP static lease map
-// (cmd/gvproxy/config.go:22-23, 372). Those defaults only apply in the
+// gvproxy v0.9.0 derives the host IP (192.168.127.254) for its
+// `host.containers.internal` DNS records from its default -subnet, and
+// hardcodes the 5a:94:ef:e4:0c:ee MAC in its DHCP static lease map
+// (cmd/gvproxy/config.go:126, 240, 425-427). Those defaults only apply in the
 // CLI mode (no -config file) — which is exactly the mode gvforwarder
 // spawns gvproxy in via its `stdio:` URL scheme. Changing the subnet at
 // runtime would silently leave host.containers.internal pointing at
