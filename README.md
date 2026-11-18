@@ -36,7 +36,7 @@ A single static Go binary, packaged as a small Alpine WSL 2 distro, that does on
 
 No Windows-side admin rights. No registry edits. No VPN client config. No Hyper-V switch surgery. You import a `tar.gz` as a WSL distro, start it, and your other distros work again.
 
-A from-scratch rebuild of the dormant [`sakai135/wsl-vpnkit`](https://github.com/sakai135/wsl-vpnkit) (last release 2023-04-04). Same problem, repackaged: shell script replaced by a static Go orchestrator, three base images collapsed to one (Alpine), every input validated, every external binary pinned by SHA-256.
+A from-scratch rebuild of the dormant [`sakai135/wsl-vpnkit`](https://github.com/sakai135/wsl-vpnkit) (last release 2023-04-04). Same problem, repackaged: shell script replaced by a static Go orchestrator, three base images collapsed to one (Alpine), every input validated, every external dependency pinned (gvforwarder by SHA-256, gvproxy.exe built from a pinned upstream commit).
 
 ## The problem
 
@@ -185,16 +185,17 @@ Four lines, in order: drop the auto-start task, terminate the distro, drop the W
 
 - `cmd/wsl-vpnfix/`: orchestrator entrypoint
 - `internal/{config,netlink,netfilter,process,wsl,healthcheck}/`: runtime modules
-- `build/Dockerfile.rootfs`: three-stage rootfs build (Go builder, upstream fetcher, final Alpine assembly)
+- `build/Dockerfile.rootfs`: four-stage rootfs build (Go builder, gvproxy builder, upstream fetcher, final Alpine assembly)
 - `build/pack.sh`: deterministic tarball producer
-- `build/upstream-pins.yaml`: pinned `gvisor-tap-vsock` release + SHA-256s
+- `build/upstream-pins.yaml`: pinned `gvisor-tap-vsock` release tag, commit and gvforwarder SHA-256
+- `build/patches/`: the one local gvproxy patch (high-resolution TCP clock on Windows)
 - `scripts/install-wslvpnfix.ps1`: Windows-side installer
 - `dev/`: dev container (Alpine + Go) and run wrapper
 - `docs/superpowers/{specs,plans}/`: design contract and frozen phase plans
 
 ## Credits
 
-The networking backend is [containers/gvisor-tap-vsock](https://github.com/containers/gvisor-tap-vsock). The `gvproxy.exe` and `gvforwarder` binaries are pulled verbatim from upstream releases and verified by SHA-256 before bundling. Idea and reference architecture: [sakai135/wsl-vpnkit](https://github.com/sakai135/wsl-vpnkit).
+The networking backend is [containers/gvisor-tap-vsock](https://github.com/containers/gvisor-tap-vsock). `gvforwarder` is pulled verbatim from the upstream release and verified by SHA-256. `gvproxy.exe` is built from the pinned upstream commit with one patch (`build/patches/gvproxy-hires-clock.patch`) that gives its TCP stack a high-resolution clock on Windows; without it the bridge retransmits most of what it sends. Idea and reference architecture: [sakai135/wsl-vpnkit](https://github.com/sakai135/wsl-vpnkit).
 
 ## License
 

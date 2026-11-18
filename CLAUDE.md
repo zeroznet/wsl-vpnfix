@@ -89,7 +89,7 @@ When the rebuild touches an external SDK or HTTP API, the workspace's `nanoconte
 - **No shelling out from the Go binary.** No `os/exec` of `iptables`, `nft`, `ip`, `wsl.exe`, `cmd.exe`. nftables via netlink-typed library; tap/route/addr via netlink Go library; Windows .exe spawned by gvforwarder via its `stdio:` URL scheme, not by us directly.
 - **Validate every env input.** IPs/MACs/paths/hostnames pass through strict regex validators before use. Reject path traversal (`..`) explicitly. No env value flows unvalidated into a syscall arg.
 - **Explicit env allowlist for child processes.** When spawning `gvforwarder`, copy only `WSL_INTEROP`, `PATH`, `WSL_DISTRO_NAME`, `WSLENV` from the orchestrator's env. Empty `Env: []string{}` breaks WSL interop in some process tree shapes; full inherit gives audit surface we don't want.
-- **Pin third-party binaries.** `gvforwarder` and `gvproxy-windowsgui.exe` from `containers/gvisor-tap-vsock` releases pinned to a release tag in `build/upstream-pins.yaml` and verified by SHA-256 before any unpack.
+- **Pin third-party dependencies.** `containers/gvisor-tap-vsock` pinned to a release tag and commit in `build/upstream-pins.yaml`. `gvforwarder` is the upstream release binary, verified by SHA-256 before any unpack. `gvproxy-windowsgui.exe` is built from the pinned commit with `build/patches/gvproxy-hires-clock.patch` (F-019) until upstream ships an equivalent fix.
 - **Distro-only install path.** No "standalone" mode. The user imports our pre-built rootfs via `wsl --import`. Single install path means single audit surface.
 - **No new file without the attribution header** from `/home/zero/dev/CLAUDE.md` (Go files use `//`, shell uses `#`, markdown uses `<!-- ... -->`).
 
@@ -145,9 +145,10 @@ wsl-vpnfix/
 ├── assets/
 │   └── logo.svg                                    ← README banner (terminal mockup, GitHub-dark palette)
 ├── build/
-│   ├── Dockerfile.rootfs                           ← three-stage: Go builder, upstream fetcher (SHA-verified), final Alpine assembly
+│   ├── Dockerfile.rootfs                           ← four-stage: Go builder, gvproxy builder (pinned commit + patch), upstream fetcher (gvforwarder, SHA-verified), final Alpine assembly
 │   ├── pack.sh                                     ← deterministic tarball producer (out/wsl-vpnfix-<version>.tar.gz; same commit -> same SHA)
-│   └── upstream-pins.yaml                          ← gvisor-tap-vsock release tag + SHA-256s for gvforwarder + gvproxy.exe
+│   ├── patches/gvproxy-hires-clock.patch           ← QueryPerformanceCounter clock for gvproxy's gVisor stack on Windows (F-019)
+│   └── upstream-pins.yaml                          ← gvisor-tap-vsock release tag + commit + gvforwarder SHA-256
 ├── scripts/
 │   └── install-wslvpnfix.ps1                       ← Windows-side PowerShell installer (download + SHA-verify + wsl --import + Task Scheduler At-logon)
 ├── dev/
