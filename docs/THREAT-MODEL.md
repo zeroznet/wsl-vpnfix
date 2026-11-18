@@ -78,7 +78,7 @@ Internet ── (VPN handles) ── Windows host
 **Build & release pipeline**
 
 - Reproducible Go build: pinned toolchain in `go.mod` `toolchain` directive; CI matrix uses the same; `-trimpath -ldflags "-s -w -buildid="`; `CGO_ENABLED=0`.
-- Pinned `containers/gvisor-tap-vsock` release tag. SHA-256s read from upstream's `sha256sums` artifact, which is itself verified against the release tag in our pipeline before any unpack.
+- Pinned `containers/gvisor-tap-vsock` release tag and commit. gvforwarder: SHA-256 from upstream's `sha256sums` artifact, verified before any unpack. gvproxy.exe: built from the pinned commit (clone checked against it) with `build/patches/gvproxy-hires-clock.patch` applied; see F-019.
 - Alpine base image pinned by digest, not tag. Bumps via PR with one-line justification.
 - Release artifacts: tarball, `SHA256SUMS`, `upstream-pins.yaml`.
 - GitHub Actions: every action pinned by commit SHA, per-job `permissions:` blocks default `read-all`.

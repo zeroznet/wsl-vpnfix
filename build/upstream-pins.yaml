@@ -2,23 +2,30 @@
 #
 # Pinned dependencies for the wsl-vpnfix release tarball. Renovate's
 # customManager (renovate.json) bumps ONLY the `tag:` line below when
-# upstream cuts a release; the sha256 values are filled in manually per
-# the procedure here. CI's "Verify upstream pins" step builds the fetcher
-# stage on every run, so a tag/sha mismatch fails the PR instead of the
+# upstream cuts a release; `commit:` and the gvforwarder sha256 are filled in
+# manually per the procedure here. gvforwarder ships as the upstream release
+# binary; gvproxy-windowsgui.exe is built from source at `commit:` with
+# build/patches/gvproxy-hires-clock.patch applied. CI's "Verify upstream
+# pins" step builds both stages on every run, so a stale commit, a sha
+# mismatch, or a patch that no longer applies fails the PR instead of the
 # release.
 #
 # Bump procedure:
 #   1. Verify the new release does not break the spawn contract documented
 #      in ~/.claude/projects/-home-zero-dev-wsl-vpnfix/memory/project_gvisor_tap_vsock_v088.md
-#   2. Fetch the new sha256sums:
+#   2. Check whether the release carries an equivalent clock fix; if so,
+#      delete the patch and the gvproxy-builder stage and pin the upstream
+#      gvproxy-windowsgui.exe by sha256 again.
+#   3. Resolve the tag's commit and fetch the gvforwarder sha256:
+#        git ls-remote https://github.com/containers/gvisor-tap-vsock 'refs/tags/<TAG>^{}'   # peeled: annotated tags otherwise return the tag object
 #        curl -fsSL https://github.com/containers/gvisor-tap-vsock/releases/download/<TAG>/sha256sums
-#   3. Replace the tag and the two sha256 values below.
-#   4. Re-run build/pack.sh; smoke test on a real WSL host.
+#   4. Replace tag, commit and the gvforwarder sha256 below; rebase the patch
+#      if `git apply --check` fails.
+#   5. Re-run build/pack.sh; smoke test on a real WSL host.
 
 gvisor_tap_vsock:
   tag: v0.9.0
+  commit: 6dbb5d4fa0033356c72a201346f8350594229868
   artifacts:
     gvforwarder:
       sha256: 5cb401eb04cc9776889f5d65728e46c5f5dd61fdd0b5269bb0f238735c51b903
-    gvproxy-windowsgui.exe:
-      sha256: b121cd05f5f8beb82d93598a074715e7b686adddd7382080e49dd0bc39bf3aa2

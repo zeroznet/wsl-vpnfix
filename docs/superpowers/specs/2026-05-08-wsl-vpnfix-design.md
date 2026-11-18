@@ -3,7 +3,7 @@
 # wsl-vpnfix — Design
 
 **Date:** 2026-05-08
-**Status:** Living spec, last rebased 2026-05-10 against Phase B addendum and Phase C decisions.
+**Status:** Living spec, last rebased 2026-05-10 against Phase B addendum and Phase C decisions; gvproxy build path updated 2026-11-18 (`2026-11-18-gvproxy-hires-clock-design.md`).
 **Author:** Robert Bopko, with Claude Opus 4.7 assistance
 
 A from-scratch rebuild of [`sakai135/wsl-vpnkit`](https://github.com/sakai135/wsl-vpnkit) (upstream dormant since 2023-04-04). Same problem class — bypass a Windows-side VPN that breaks WSL 2 networking — but built for 2026: minimal attack surface, single Go binary, SHA-256-verified reproducible releases, documented threat model.
@@ -92,7 +92,7 @@ WSL 2 (default NAT mode) hosts every imported distro inside one Linux VM with a 
 |---|---|---|---|
 | `wsl-vpnfix` Go orchestrator | Linux side, in our distro, launched at boot via `wsl.conf` `[boot] command=` as a child of WSL's `/init` (no systemd) | us | source-in-repo |
 | `wsl-gvforwarder` | Linux side, child of orchestrator | upstream `containers/gvisor-tap-vsock` | yes (SHA-256) |
-| `wsl-gvproxy.exe` | Windows side, child of orchestrator (WSL interop) | upstream `containers/gvisor-tap-vsock` (`gvproxy-windowsgui.exe`) | yes (SHA-256) |
+| `wsl-gvproxy.exe` | Windows side, child of orchestrator (WSL interop) | upstream `containers/gvisor-tap-vsock` (`gvproxy-windowsgui.exe`), built by us from the pinned commit + one patch (F-019) | yes (commit pin) |
 | Alpine rootfs | Linux side, the distro we ship | us, base from Alpine | base image pinned by digest |
 | `wsl.conf` | Linux side, baked into rootfs | us | source-in-repo |
 
@@ -149,21 +149,23 @@ Source              ← this repo, git tag is the source of truth
 Go toolchain        ← apk-pinned `go=X.Y.Z-rN` in build/Dockerfile.rootfs, go.mod `go` directive in lockstep; must stay on an upstream-supported Go minor (vulnwatch.yml enforces)
 Alpine rootfs base  ← FROM alpine@sha256:<digest>  (pinned, not :latest, not :3.22)
 gvforwarder         ← https://github.com/containers/gvisor-tap-vsock/releases/download/<tag>/gvforwarder
-gvproxy-windowsgui  ← https://github.com/containers/gvisor-tap-vsock/releases/download/<tag>/gvproxy-windowsgui.exe
+gvproxy source      ← git clone https://github.com/containers/gvisor-tap-vsock --branch <tag>, HEAD checked against the pinned commit
+gvproxy patch       ← build/patches/gvproxy-hires-clock.patch (QPC stack clock on Windows, F-019)
 sha256sums          ← https://github.com/containers/gvisor-tap-vsock/releases/download/<tag>/sha256sums
 ```
 
-The upstream tag and our expected checksums for the two artifacts live in one repo file, `build/upstream-pins.yaml`:
+The upstream tag, its commit and our expected gvforwarder checksum live in one repo file, `build/upstream-pins.yaml`:
 
 ```yaml
 gvisor_tap_vsock:
-  tag: v0.8.8
+  tag: v0.9.0
+  commit: <40 hex>
   artifacts:
-    gvforwarder:            sha256:<64 hex>
-    gvproxy-windowsgui.exe: sha256:<64 hex>
+    gvforwarder:
+      sha256: <64 hex>
 ```
 
-The build verifies upstream's `sha256sums` against these values before any unpack. Any drift fails the build loudly.
+The build verifies the gvforwarder download against the pinned sha256 and the gvproxy clone against the pinned commit before using either. Any drift, or a patch that no longer applies, fails the build loudly.
 
 **Pinning policy — what we explicitly version-control vs. what falls out of the base:**
 
@@ -174,7 +176,7 @@ We pin exactly four things. Everything else in the build environment is downstre
 | Alpine base image | `FROM alpine@sha256:<digest>` in Containerfile / Dockerfile.rootfs | Every apk package in the resulting image (nftables, iproute2, ca-certificates, busybox, libc, etc.) — they are whatever ships in that Alpine snapshot. |
 | Go toolchain | `go=<version>-r<rev>` in `apk add` of the builder image, plus `go <version>` directive in `go.mod` | The compiler / stdlib that produces the binary. Builder pin must match `go.mod` directive so a base bump cannot silently change the language version. |
 | Go module dependencies | `go.sum` (verified at build time via `go mod verify` against `sum.golang.org`) | Every Go library compiled into the binary, including transitive deps. |
-| gvisor-tap-vsock release | `build/upstream-pins.yaml` (tag + sha256 of each artifact) | The `gvforwarder` Linux binary and `gvproxy-windowsgui.exe` shipped in the rootfs. |
+| gvisor-tap-vsock release | `build/upstream-pins.yaml` (tag + commit + gvforwarder sha256) | The upstream `gvforwarder` Linux binary and the source `gvproxy-windowsgui.exe` is built from. |
 
 We **do not** pin individual apk packages by version (no `nftables=1.1.5-r2`, no `iproute2=6.17.0-r0`). The Alpine base digest already locks them; per-package pins would be redundant noise that drifts out of sync with reality every time the base bumps. An apk pin is justified only when version really matters independent of the base — Go is the one such case (toolchain == build product).
 
@@ -192,21 +194,28 @@ We also do not vendor Go modules. `go.sum` + `sum.golang.org` (Go's transparency
 
    `-trimpath` strips build paths, `-buildid=` zeros the nondeterministic Go build ID, no CGO so the binary is fully static.
 
-2. **Fetch and verify upstream binaries:**
+2. **Build gvproxy.exe from pinned source** (`gvproxy-builder` stage, reuses the builder toolchain):
 
    ```
-   curl -fSL <release>/sha256sums           → /tmp/sha256sums
-   curl -fSL <release>/gvforwarder          → /tmp/gvforwarder
-   curl -fSL <release>/gvproxy-windowsgui.exe → /tmp/gvproxy-windowsgui.exe
-   sha256sum -c (filtered to our two artifacts) /tmp/sha256sums
-   compare each line to build/upstream-pins.yaml; abort on any mismatch
+   git clone --depth 1 --branch <tag>; abort unless HEAD == pinned commit
+   git apply --check && git apply build/patches/gvproxy-hires-clock.patch
+   go test ./pkg/virtualnetwork -run TestQPC
+   GOOS=windows GOARCH=amd64 go build -mod=vendor -trimpath \
+     -ldflags "-s -w -buildid= -H=windowsgui -X .../pkg/types.gitVersion=<tag>-wsl-vpnfix" ./cmd/gvproxy
    ```
 
-3. **Assemble rootfs** with the pinned Alpine base. Install only `iproute2` and `nftables`. Remove apk caches before packing.
+3. **Fetch and verify gvforwarder:**
 
-4. **Pack** as `wsl-vpnfix-<version>.tar.gz` ready for `wsl --import`.
+   ```
+   curl -fSL <release>/gvforwarder → gvforwarder
+   sha256sum -c against build/upstream-pins.yaml; abort on mismatch
+   ```
 
-5. **Generate metadata:**
+4. **Assemble rootfs** with the pinned Alpine base. Install only `iproute2` and `nftables`. Remove apk caches before packing.
+
+5. **Pack** as `wsl-vpnfix-<version>.tar.gz` ready for `wsl --import`.
+
+6. **Generate metadata:**
    - `SHA256SUMS` for the tarball and `upstream-pins.yaml`.
 
 ### 4.3 Reproducibility
@@ -285,8 +294,9 @@ wsl-vpnfix/
 │   ├── wsl/                              ← WSL2 NAT gateway IP detector (resolv.conf)
 │   └── healthcheck/                     ← optional connectivity probes
 ├── build/
-│   ├── upstream-pins.yaml               ← gvisor-tap-vsock tag + sha256s
-│   ├── Dockerfile.rootfs                ← three-stage: Go builder, upstream fetcher (SHA-verified), final Alpine assembly
+│   ├── upstream-pins.yaml               ← gvisor-tap-vsock tag + commit + gvforwarder sha256
+│   ├── patches/                         ← gvproxy-hires-clock.patch (F-019)
+│   ├── Dockerfile.rootfs                ← four-stage: Go builder, gvproxy builder, upstream fetcher (SHA-verified), final Alpine assembly
 │   └── pack.sh                          ← deterministic tar assembly
 ├── .github/
 │   └── workflows/
@@ -323,7 +333,7 @@ Layout notes:
 | Use case | Win 11 + WSL 2 + corporate VPN where mirrored mode does not suffice |
 | Base image | Alpine, pinned by digest |
 | Distribution model | Distro-only (sibling appliance distro, `wsl --import`) |
-| Runtime | Go orchestrator + pinned upstream `gvforwarder` + pinned upstream `gvproxy-windowsgui.exe` |
+| Runtime | Go orchestrator + pinned upstream `gvforwarder` + `gvproxy-windowsgui.exe` built from the pinned upstream commit with one patch |
 | Architectures | amd64 only; ARM deferred |
 | Network rules | nftables via netlink-typed Go library |
 | IP plan / subnet | Compile-time fixed at `192.168.127.0/24` (gvproxy v0.8.8 hardcodes parts of it; runtime override would only pretend to work) |

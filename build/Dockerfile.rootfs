@@ -3,8 +3,10 @@
 # Multi-stage build for the wsl-vpnfix appliance rootfs.
 # Stages:
 #   1. builder       : compile our Go orchestrator with reproducible flags
-#   2. fetcher       : download + verify upstream gvisor-tap-vsock binaries
-#   3. final         : Alpine rootfs assembly, exported by build/pack.sh
+#   2. gvproxy-builder : build gvproxy-windowsgui.exe from pinned upstream
+#                        source plus build/patches/gvproxy-hires-clock.patch
+#   3. fetcher       : download + verify the upstream gvforwarder binary
+#   4. final         : Alpine rootfs assembly, exported by build/pack.sh
 
 # ---- Stage 1: Go builder ----
 # Same Alpine digest as dev/Containerfile and the final stage so the build
@@ -42,29 +44,54 @@ RUN SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH}" go build \
         -o /out/wsl-vpnfix \
         ./cmd/wsl-vpnfix
 
-# ---- Stage 2: Upstream fetcher ----
+# ---- Stage 2: gvproxy builder ----
+# Reuses the builder toolchain (one pinned apk go). The clone is checked
+# against the pinned commit before the patch is applied, so a tag-only
+# Renovate bump or a moved tag fails here. Upstream vendors its modules,
+# so nothing else is fetched.
+FROM builder AS gvproxy-builder
+
+ARG GVTV_TAG=v0.9.0
+ARG GVTV_COMMIT
+
+COPY build/patches/gvproxy-hires-clock.patch /patches/
+
+WORKDIR /gvtv
+RUN set -eu; \
+    git -c advice.detachedHead=false clone --quiet --depth 1 --branch "${GVTV_TAG}" https://github.com/containers/gvisor-tap-vsock.git .; \
+    head=$(git rev-parse HEAD); \
+    if [ "${head}" != "${GVTV_COMMIT}" ]; then \
+        echo "gvisor-tap-vsock ${GVTV_TAG} is ${head}, pinned ${GVTV_COMMIT}" >&2; exit 1; \
+    fi; \
+    git apply --check /patches/gvproxy-hires-clock.patch; \
+    git apply /patches/gvproxy-hires-clock.patch; \
+    GOFLAGS="-buildvcs=false -mod=vendor" go test ./pkg/virtualnetwork -run TestQPC; \
+    GOFLAGS="-buildvcs=false -mod=vendor" GOOS=windows GOARCH=amd64 go build \
+        -trimpath \
+        -ldflags "-s -w -buildid= -H=windowsgui -X github.com/containers/gvisor-tap-vsock/pkg/types.gitVersion=${GVTV_TAG}-wsl-vpnfix" \
+        -o /out/gvproxy-windowsgui.exe \
+        ./cmd/gvproxy; \
+    chmod 0644 /out/gvproxy-windowsgui.exe
+
+# ---- Stage 3: Upstream fetcher ----
 FROM alpine@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS fetcher
 
 ARG GVTV_TAG=v0.9.0
 ARG GVTV_GVFORWARDER_SHA256
-ARG GVTV_GVPROXY_EXE_SHA256
 
 RUN apk add --no-cache curl ca-certificates
 
 WORKDIR /upstream
 
-# Two artifacts, two checks. Fail loud on any mismatch — these checksums
-# come from build/upstream-pins.yaml via build/pack.sh build args.
+# Fail loud on a mismatch: the checksum comes from build/upstream-pins.yaml
+# via build/pack.sh build args.
 RUN set -eu; \
     base="https://github.com/containers/gvisor-tap-vsock/releases/download/${GVTV_TAG}"; \
     curl -fsSL "${base}/gvforwarder" -o gvforwarder; \
     echo "${GVTV_GVFORWARDER_SHA256}  gvforwarder" | sha256sum -c -; \
-    curl -fsSL "${base}/gvproxy-windowsgui.exe" -o gvproxy-windowsgui.exe; \
-    echo "${GVTV_GVPROXY_EXE_SHA256}  gvproxy-windowsgui.exe" | sha256sum -c -; \
-    chmod 0755 gvforwarder; \
-    chmod 0644 gvproxy-windowsgui.exe
+    chmod 0755 gvforwarder
 
-# ---- Stage 3: Final rootfs ----
+# ---- Stage 4: Final rootfs ----
 FROM alpine@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS final
 
 RUN apk add --no-cache \
@@ -81,7 +108,7 @@ RUN apk add --no-cache \
 # fetching anything external.
 COPY --from=builder  /out/wsl-vpnfix                        /sbin/wsl-vpnfix
 COPY --from=fetcher  /upstream/gvforwarder                  /sbin/wsl-gvforwarder
-COPY --from=fetcher  /upstream/gvproxy-windowsgui.exe       /etc/wsl-vpnfix/wsl-gvproxy.exe
+COPY --from=gvproxy-builder /out/gvproxy-windowsgui.exe   /etc/wsl-vpnfix/wsl-gvproxy.exe
 COPY                 LICENSE                                /LICENSE
 
 # /sbin/init -> /sbin/wsl-vpnfix : the rootfs has no systemd; we are PID 1.

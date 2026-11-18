@@ -7,7 +7,7 @@
 # Determinism inputs:
 #   - SOURCE_DATE_EPOCH       (defaults to git commit time of HEAD)
 #   - $VERSION                (positional arg or env)
-#   - build/upstream-pins.yaml (pinned upstream artifact hashes)
+#   - build/upstream-pins.yaml (pinned upstream tag, commit, artifact hash)
 #   - build/Dockerfile.rootfs  (digest-pinned Alpine base)
 #   - go.mod / go.sum          (locked Go module graph)
 #
@@ -64,9 +64,9 @@ COMMIT=$(git rev-parse --short=12 HEAD)
 SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git log -1 --pretty=%ct HEAD)}"
 export SOURCE_DATE_EPOCH
 
-# Parse upstream-pins.yaml without a YAML library — two lines, each is a
-# `      sha256: <64hex>` with predictable indent. awk is sufficient and
-# keeps the script dependency surface to POSIX tools.
+# Parse upstream-pins.yaml without a YAML library: tag, commit and one
+# `      sha256: <64hex>` line, each with predictable indent. awk is
+# sufficient and keeps the script dependency surface to POSIX tools.
 PINS_FILE=build/upstream-pins.yaml
 [ -f "${PINS_FILE}" ] || die "missing ${PINS_FILE}"
 
@@ -79,18 +79,15 @@ GVTV_GVFORWARDER_SHA256=$(awk '
 ' "${PINS_FILE}")
 [ -n "${GVTV_GVFORWARDER_SHA256}" ] || die "could not parse gvforwarder sha256 from ${PINS_FILE}"
 
-GVTV_GVPROXY_EXE_SHA256=$(awk '
-    /^    gvproxy-windowsgui\.exe:/ { in_gvp=1; next }
-    in_gvp && /sha256:/ { print $2; exit }
-' "${PINS_FILE}")
-[ -n "${GVTV_GVPROXY_EXE_SHA256}" ] || die "could not parse gvproxy-windowsgui.exe sha256 from ${PINS_FILE}"
+GVTV_COMMIT=$(awk '/^  commit:/ { print $2; exit }' "${PINS_FILE}")
+case "${GVTV_COMMIT}" in
+    *[!0-9a-f]*|'') die "could not parse gvisor-tap-vsock commit from ${PINS_FILE}" ;;
+esac
+[ "${#GVTV_COMMIT}" -eq 40 ] || die "could not parse gvisor-tap-vsock commit from ${PINS_FILE}: want 40 hex chars, got ${#GVTV_COMMIT}"
 
 # Refuse to ship if anything has not been filled in.
 case "${GVTV_GVFORWARDER_SHA256}" in
     __FILL_FROM_UPSTREAM_SHA256SUMS__) die "${PINS_FILE}: gvforwarder sha256 placeholder, aborting" ;;
-esac
-case "${GVTV_GVPROXY_EXE_SHA256}" in
-    __FILL_FROM_UPSTREAM_SHA256SUMS__) die "${PINS_FILE}: gvproxy-windowsgui.exe sha256 placeholder, aborting" ;;
 esac
 
 mkdir -p out
@@ -108,7 +105,7 @@ ${OCI} build \
     --build-arg "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}" \
     --build-arg "GVTV_TAG=${GVTV_TAG}" \
     --build-arg "GVTV_GVFORWARDER_SHA256=${GVTV_GVFORWARDER_SHA256}" \
-    --build-arg "GVTV_GVPROXY_EXE_SHA256=${GVTV_GVPROXY_EXE_SHA256}" \
+    --build-arg "GVTV_COMMIT=${GVTV_COMMIT}" \
     .
 
 log "exporting rootfs to ${EXPORT_DIR}"

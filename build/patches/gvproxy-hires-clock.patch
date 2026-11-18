@@ -1,0 +1,161 @@
+# scripted/written by Robert Bopko (github.com/zeroznet) with Boba Bott (Claude Opus 5.5)
+#
+# containers/gvisor-tap-vsock v0.9.0: give the gVisor stack a QueryPerformanceCounter
+# monotonic clock on Windows. Go's Windows monotonic clock ticks at 15.625 ms, so RTT
+# samples read 0 and RACK floods the guest with spurious retransmissions.
+# Applied by build/Dockerfile.rootfs (gvproxy-builder stage). Drop once an upstream release ships an equivalent fix.
+
+diff --git a/pkg/virtualnetwork/clock_other.go b/pkg/virtualnetwork/clock_other.go
+new file mode 100644
+index 0000000..6d71491
+--- /dev/null
++++ b/pkg/virtualnetwork/clock_other.go
+@@ -0,0 +1,11 @@
++//go:build !windows
++
++package virtualnetwork
++
++import "gvisor.dev/gvisor/pkg/tcpip"
++
++// newStackClock returns nil so gVisor uses its default clock; Go's
++// monotonic clock has sufficient resolution outside Windows.
++func newStackClock() tcpip.Clock {
++	return nil
++}
+diff --git a/pkg/virtualnetwork/clock_windows.go b/pkg/virtualnetwork/clock_windows.go
+new file mode 100644
+index 0000000..4246021
+--- /dev/null
++++ b/pkg/virtualnetwork/clock_windows.go
+@@ -0,0 +1,58 @@
++//go:build windows
++
++package virtualnetwork
++
++import (
++	"syscall"
++	"unsafe"
++
++	log "github.com/sirupsen/logrus"
++	"golang.org/x/sys/windows"
++	"gvisor.dev/gvisor/pkg/tcpip"
++)
++
++var (
++	kernel32                      = windows.NewLazySystemDLL("kernel32.dll")
++	procQueryPerformanceCounter   = kernel32.NewProc("QueryPerformanceCounter")
++	procQueryPerformanceFrequency = kernel32.NewProc("QueryPerformanceFrequency")
++)
++
++// qpcClock gives the gVisor stack a high-resolution monotonic clock. Go's
++// monotonic clock on Windows advances only once per system timer tick
++// (15.625 ms by default), so on a sub-millisecond link most TCP RTT samples
++// read 0. RACK then runs with a zero reorder window and marks in-flight
++// segments lost en masse, flooding the peer with spurious retransmissions.
++type qpcClock struct {
++	tcpip.Clock
++	freq, base int64
++}
++
++// newStackClock returns nil, meaning gVisor's default clock, if the
++// performance counter is unavailable.
++func newStackClock() tcpip.Clock {
++	if err := procQueryPerformanceFrequency.Find(); err != nil {
++		log.Warnf("QueryPerformanceFrequency unavailable, using the default stack clock: %v", err)
++		return nil
++	}
++	if err := procQueryPerformanceCounter.Find(); err != nil {
++		log.Warnf("QueryPerformanceCounter unavailable, using the default stack clock: %v", err)
++		return nil
++	}
++	var freq int64
++	if r, _, err := syscall.SyscallN(procQueryPerformanceFrequency.Addr(), uintptr(unsafe.Pointer(&freq))); r == 0 || freq <= 0 {
++		log.Warnf("QueryPerformanceFrequency failed, using the default stack clock: %v", err)
++		return nil
++	}
++	return &qpcClock{Clock: tcpip.NewStdClock(), freq: freq, base: queryPerformanceCounter()}
++}
++
++func queryPerformanceCounter() int64 {
++	var counter int64
++	_, _, _ = syscall.SyscallN(procQueryPerformanceCounter.Addr(), uintptr(unsafe.Pointer(&counter)))
++	return counter
++}
++
++// NowMonotonic implements tcpip.Clock.NowMonotonic.
++func (c *qpcClock) NowMonotonic() tcpip.MonotonicTime {
++	return tcpip.MonotonicTime{}.Add(qpcDuration(queryPerformanceCounter()-c.base, c.freq))
++}
+diff --git a/pkg/virtualnetwork/qpc.go b/pkg/virtualnetwork/qpc.go
+new file mode 100644
+index 0000000..8552dac
+--- /dev/null
++++ b/pkg/virtualnetwork/qpc.go
+@@ -0,0 +1,12 @@
++package virtualnetwork
++
++import "time"
++
++// qpcDuration converts a QueryPerformanceCounter tick count to a duration.
++// Seconds and remainder are scaled separately: counter*1e9 would overflow
++// int64 after ~15 minutes at a 10 MHz counter frequency.
++func qpcDuration(counter, freq int64) time.Duration {
++	seconds := counter / freq
++	remainder := counter % freq
++	return time.Duration(seconds)*time.Second + time.Duration(remainder*int64(time.Second)/freq)
++}
+diff --git a/pkg/virtualnetwork/qpc_test.go b/pkg/virtualnetwork/qpc_test.go
+new file mode 100644
+index 0000000..6ac976e
+--- /dev/null
++++ b/pkg/virtualnetwork/qpc_test.go
+@@ -0,0 +1,37 @@
++package virtualnetwork
++
++import (
++	"testing"
++	"time"
++)
++
++func TestQPCDuration(t *testing.T) {
++	cases := []struct {
++		counter, freq int64
++		want          time.Duration
++	}{
++		{1000, 1000, time.Second},
++		{1, 3, 333_333_333 * time.Nanosecond},
++		{0, 10_000_000, 0},
++	}
++	for _, c := range cases {
++		if got := qpcDuration(c.counter, c.freq); got != c.want {
++			t.Errorf("qpcDuration(%d, %d) = %v, want %v", c.counter, c.freq, got, c.want)
++		}
++	}
++}
++
++func TestQPCDurationNoOverflow(t *testing.T) {
++	cases := []struct {
++		counter, freq int64
++		want          time.Duration
++	}{
++		{24_000_000 * 86400 * 30, 24_000_000, 30 * 24 * time.Hour},
++		{10_000_000 * 1000, 10_000_000, 1000 * time.Second},
++	}
++	for _, c := range cases {
++		if got := qpcDuration(c.counter, c.freq); got != c.want {
++			t.Errorf("qpcDuration(%d, %d) = %v, want %v", c.counter, c.freq, got, c.want)
++		}
++	}
++}
+diff --git a/pkg/virtualnetwork/virtualnetwork.go b/pkg/virtualnetwork/virtualnetwork.go
+index b2b4461..7cb9764 100644
+--- a/pkg/virtualnetwork/virtualnetwork.go
++++ b/pkg/virtualnetwork/virtualnetwork.go
+@@ -135,6 +135,7 @@ func createStack(configuration *types.Configuration, endpoint stack.LinkEndpoint
+ 			udp.NewProtocol,
+ 			icmp.NewProtocol4,
+ 		},
++		Clock: newStackClock(),
+ 	})
+ 
+ 	if err := s.CreateNIC(1, endpoint); err != nil {
