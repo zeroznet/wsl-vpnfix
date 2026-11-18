@@ -17,7 +17,7 @@
 #      delete the patch and the gvproxy-builder stage and pin the upstream
 #      gvproxy-windowsgui.exe by sha256 again.
 #   3. Resolve the tag's commit and fetch the gvforwarder sha256:
-#        git ls-remote https://github.com/containers/gvisor-tap-vsock refs/tags/<TAG>
+#        git ls-remote https://github.com/containers/gvisor-tap-vsock 'refs/tags/<TAG>^{}'   # peeled: annotated tags otherwise return the tag object
 #        curl -fsSL https://github.com/containers/gvisor-tap-vsock/releases/download/<TAG>/sha256sums
 #   4. Replace tag, commit and the gvforwarder sha256 below; rebase the patch
 #      if `git apply --check` fails.
