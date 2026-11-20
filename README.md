@@ -191,7 +191,7 @@ Four lines, in order: drop the auto-start task, terminate the distro, drop the W
 - `build/patches/`: the one local gvproxy patch (high-resolution TCP clock on Windows)
 - `scripts/install-wslvpnfix.ps1`: Windows-side installer
 - `dev/`: dev container (Alpine + Go) and run wrapper
-- `docs/superpowers/{specs,plans}/`: design contract and frozen phase plans
+- `docs/superpowers/specs/`: design contract
 
 ## Credits
 
