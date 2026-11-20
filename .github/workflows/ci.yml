@@ -28,6 +28,15 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Install shellcheck
+        run: |
+          set -eu
+          sudo apt-get update -q
+          sudo apt-get install -y -q shellcheck
+
+      - name: shellcheck
+        run: shellcheck -s sh build/pack.sh dev/run.sh
+
       - name: gofmt
         run: |
           set -eu

@@ -141,7 +141,7 @@ wsl-vpnfix/
 │   ├── Containerfile                               ← Alpine 3.24 (digest-pinned) + Go 1.26.11 dev image
 │   └── run.sh                                      ← podman wrapper with persistent caches; --integration adds NET_ADMIN+NET_RAW+/dev/net/tun
 ├── .github/workflows/
-│   ├── ci.yml                                      ← gofmt, vet, mod-verify, govulncheck (non-blocking by design — apk go trails upstream), unit + integration, build verify, upstream-pins verify, release builder-stage verify, race
+│   ├── ci.yml                                      ← shellcheck (build + dev scripts), gofmt, vet, mod-verify, govulncheck (non-blocking by design — apk go trails upstream), unit + integration, build verify, upstream-pins verify, release builder-stage verify, race
 │   ├── release.yml                                 ← tag-triggered (^vN.N.N$); runs build/pack.sh; uploads tarball + SHA256SUMS + upstream-pins.yaml to GH Release
 │   └── vulnwatch.yml                               ← weekly + toolchain PRs: strict govulncheck on the shipped apk go + Go EOL check; emails on failure
 ├── out/                                            ← gitignored; pack.sh write target
